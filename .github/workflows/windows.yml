@@ -1,0 +1,99 @@
+name: Build Windows Portable
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64:
+    name: Windows x64 Portable
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.*"
+          host: "windows"
+          target: "desktop"
+          arch: "win64_msvc2022_64"
+          cache: true
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -S . -B build-windows `
+            -G "Visual Studio 17 2022" `
+            -A x64
+
+      - name: Build
+        shell: pwsh
+        run: |
+          cmake --build build-windows `
+            --config Release `
+            --parallel 2
+
+      - name: Create portable folder
+        shell: pwsh
+        run: |
+          $packageDir = "dist\BTC-Purchase-Tracker"
+          New-Item -ItemType Directory -Force $packageDir | Out-Null
+
+          $builtExe = "build-windows\Release\btc-purchase-tracker.exe"
+          if (!(Test-Path $builtExe)) {
+            throw "Executable non trovato: $builtExe"
+          }
+
+          Copy-Item $builtExe "$packageDir\BTC-Purchase-Tracker.exe"
+
+          windeployqt `
+            --release `
+            --compiler-runtime `
+            "$packageDir\BTC-Purchase-Tracker.exe"
+
+          if (Test-Path "LICENSE") {
+            Copy-Item "LICENSE" "$packageDir\LICENSE.txt"
+          }
+
+          if (!(Test-Path "$packageDir\platforms\qwindows.dll")) {
+            throw "Packaging incompleto: manca platforms\qwindows.dll"
+          }
+
+          if (!(Test-Path "$packageDir\sqldrivers\qsqlite.dll")) {
+            throw "Packaging incompleto: manca sqldrivers\qsqlite.dll"
+          }
+
+      - name: Create portable ZIP
+        shell: pwsh
+        run: |
+          $version = "1.0.0"
+          $zip = "dist\BTC-Purchase-Tracker-$version-Windows-x64.zip"
+
+          Compress-Archive `
+            -Path "dist\BTC-Purchase-Tracker" `
+            -DestinationPath $zip `
+            -CompressionLevel Optimal
+
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  BTC-Purchase-Tracker-$version-Windows-x64.zip" |
+            Out-File `
+              "dist\BTC-Purchase-Tracker-$version-Windows-x64.zip.sha256" `
+              -Encoding ascii
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BTC-Purchase-Tracker-1.0.0-Windows-x64
+          path: |
+            dist/BTC-Purchase-Tracker-1.0.0-Windows-x64.zip
+            dist/BTC-Purchase-Tracker-1.0.0-Windows-x64.zip.sha256
+          if-no-files-found: error
+          retention-days: 30

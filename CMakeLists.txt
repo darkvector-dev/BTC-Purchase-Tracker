@@ -24,6 +24,17 @@ add_executable(btc-purchase-tracker
 
 target_link_libraries(btc-purchase-tracker PRIVATE Qt6::Widgets Qt6::Sql)
 
+# Windows-specific packaging details only.
+# The application sources remain shared with Linux/macOS.
+if(WIN32)
+    set_target_properties(btc-purchase-tracker PROPERTIES
+        WIN32_EXECUTABLE TRUE
+    )
+    target_sources(btc-purchase-tracker PRIVATE
+        windows/app.rc
+    )
+endif()
+
 install(TARGETS btc-purchase-tracker RUNTIME DESTINATION bin)
 install(FILES appimage/btc-purchase-tracker.desktop DESTINATION share/applications)
 install(FILES assets/btc_purchase_tracker_icon.png

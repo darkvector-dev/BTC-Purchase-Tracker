@@ -1,0 +1,120 @@
+name: Build AppImage
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  appimage-x86_64:
+    name: AppImage x86_64
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake \
+            g++ \
+            qt6-base-dev \
+            qt6-base-dev-tools \
+            libqt6opengl6-dev \
+            libglx-dev \
+            libgl1-mesa-dev \
+            libopengl-dev \
+            libsqlite3-dev \
+            wget \
+            file \
+            patchelf
+
+      - name: Configure
+        run: |
+          cmake -S . -B build-appimage \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr
+
+      - name: Build
+        run: |
+          cmake --build build-appimage --parallel 2
+
+      - name: Install into AppDir
+        run: |
+          rm -rf AppDir
+          DESTDIR="$PWD/AppDir" cmake --install build-appimage
+
+      - name: Download linuxdeploy tools
+        run: |
+          mkdir -p tools
+
+          wget -q \
+            -O tools/linuxdeploy-x86_64.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+
+          wget -q \
+            -O tools/linuxdeploy-plugin-qt-x86_64.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+
+          chmod +x tools/*.AppImage
+
+      - name: Build AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          VERSION: "1.0.0"
+        run: |
+          export PATH="$PWD/tools:$PATH"
+
+          if command -v qmake6 >/dev/null 2>&1; then
+            export QMAKE="$(command -v qmake6)"
+          elif command -v qmake >/dev/null 2>&1; then
+            export QMAKE="$(command -v qmake)"
+          fi
+
+          ./tools/linuxdeploy-x86_64.AppImage \
+            --appdir AppDir \
+            --desktop-file assets/btc-purchase-tracker.desktop \
+            --icon-file assets/btc-purchase-tracker.svg \
+            --plugin qt \
+            --output appimage
+
+          mkdir -p dist
+
+          generated="$(find "$PWD" -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+
+          if [ -z "$generated" ]; then
+            echo "ERRORE: linuxdeploy non ha prodotto alcuna AppImage."
+            exit 1
+          fi
+
+          mv "$generated" \
+            dist/BTC-Purchase-Tracker-1.0.0-x86_64.AppImage
+
+          chmod +x \
+            dist/BTC-Purchase-Tracker-1.0.0-x86_64.AppImage
+
+          sha256sum \
+            dist/BTC-Purchase-Tracker-1.0.0-x86_64.AppImage \
+            > dist/BTC-Purchase-Tracker-1.0.0-x86_64.AppImage.sha256
+
+          file \
+            dist/BTC-Purchase-Tracker-1.0.0-x86_64.AppImage
+
+          cat \
+            dist/BTC-Purchase-Tracker-1.0.0-x86_64.AppImage.sha256
+
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BTC-Purchase-Tracker-1.0.0-x86_64
+          path: |
+            dist/BTC-Purchase-Tracker-1.0.0-x86_64.AppImage
+            dist/BTC-Purchase-Tracker-1.0.0-x86_64.AppImage.sha256
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,30 @@
+cmake_minimum_required(VERSION 3.20)
+project(BTCPurchaseTracker VERSION 1.0.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+set(CMAKE_AUTOUIC ON)
+
+find_package(Qt6 REQUIRED COMPONENTS Widgets Sql)
+
+add_executable(btc-purchase-tracker
+    src/main.cpp
+    src/mainwindow.cpp
+    src/mainwindow.h
+    src/purchasedialog.cpp
+    src/purchasedialog.h
+    src/database.cpp
+    src/database.h
+    src/csvutils.cpp
+    src/csvutils.h
+    resources/resources.qrc
+)
+
+target_link_libraries(btc-purchase-tracker PRIVATE Qt6::Widgets Qt6::Sql)
+
+install(TARGETS btc-purchase-tracker RUNTIME DESTINATION bin)
+install(FILES appimage/btc-purchase-tracker.desktop DESTINATION share/applications)
+install(FILES assets/btc_purchase_tracker_icon.png
+        DESTINATION share/icons/hicolor/512x512/apps)

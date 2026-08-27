@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=BTC Purchase Tracker
+Comment=Registro locale degli acquisti Bitcoin
+Exec=btc-purchase-tracker
+Icon=btc_purchase_tracker_icon
+Terminal=false
+Categories=Office;Finance;
+Keywords=Bitcoin;BTC;Satoshi;Portfolio;Finance;

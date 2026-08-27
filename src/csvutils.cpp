@@ -1,0 +1,331 @@
+#include "csvutils.h"
+
+#include <QFile>
+#include <QLocale>
+#include <QMap>
+#include <QRegularExpression>
+#include <QSet>
+#include <QTextStream>
+#include <QStringConverter>
+#include <limits>
+
+namespace CsvUtils {
+
+QStringList parseLine(const QString &line, QChar delimiter) {
+    QStringList cells;
+    QString cell;
+    bool quoted = false;
+    for (qsizetype i = 0; i < line.size(); ++i) {
+        const QChar c = line[i];
+        if (c == '"') {
+            if (quoted && i + 1 < line.size() && line[i + 1] == '"') {
+                cell += '"';
+                ++i;
+            } else {
+                quoted = !quoted;
+            }
+        } else if (c == delimiter && !quoted) {
+            cells << cell.trimmed();
+            cell.clear();
+        } else {
+            cell += c;
+        }
+    }
+    cells << cell.trimmed();
+    return cells;
+}
+
+QChar detectDelimiter(const QString &header) {
+    const QList<QChar> candidates = {';', ',', '\t'};
+    QChar best = ';';
+    int bestCount = -1;
+    for (QChar d : candidates) {
+        int count = parseLine(header, d).size();
+        if (count > bestCount) { bestCount = count; best = d; }
+    }
+    return best;
+}
+
+QString normalizeHeader(QString s) {
+    s = s.trimmed().toLower();
+    s.replace('_', ' ');
+    s.replace('-', ' ');
+    s.replace(QRegularExpression("\\s+"), " ");
+    return s;
+}
+
+QDate parseDate(QString s) {
+    s = s.trimmed();
+    const QStringList formats = {"dd/MM/yyyy", "yyyy-MM-dd", "dd-MM-yyyy", "d/M/yyyy", "d-M-yyyy"};
+    for (const auto &fmt : formats) {
+        QDate d = QDate::fromString(s, fmt);
+        if (d.isValid()) return d;
+    }
+    return {};
+}
+
+bool parseEuroCents(QString s, qint64 *out) {
+    s = s.trimmed();
+    s.remove(QChar(u'€'));
+    s.remove(QRegularExpression("\\s"));
+    if (s.isEmpty()) return false;
+
+    const int lastComma = s.lastIndexOf(',');
+    const int lastDot = s.lastIndexOf('.');
+    QChar decimalSep;
+    if (lastComma >= 0 && lastDot >= 0) decimalSep = (lastComma > lastDot) ? ',' : '.';
+    else if (lastComma >= 0) decimalSep = ',';
+    else if (lastDot >= 0) {
+        // A single dot followed by exactly 3 digits is more likely a thousands separator.
+        decimalSep = (s.size() - lastDot - 1 == 3) ? QChar() : '.';
+    }
+
+    QString normalized;
+    for (QChar c : s) {
+        if (c.isDigit() || c == '-' || (!decimalSep.isNull() && c == decimalSep)) normalized += c;
+    }
+    if (!decimalSep.isNull()) normalized.replace(decimalSep, '.');
+
+    bool ok = false;
+    double val = normalized.toDouble(&ok);
+    if (!ok || val < 0.0) return false;
+    *out = qRound64(val * 100.0);
+    return true;
+}
+
+bool parseSats(QString s, qint64 *out) {
+    s = s.trimmed();
+
+    // Accetta anche valori frazionari di satoshi mostrati da alcuni servizi
+    // (es. Lightning/custodial) e li arrotonda al satoshi intero piu' vicino.
+    // Formati supportati, per esempio:
+    //   78489
+    //   78489,696901
+    //   78489.696901
+    //   3,622.323
+    //   3.622,323
+    //
+    // Se sono presenti sia punto sia virgola, l'ultimo dei due e' considerato
+    // il separatore decimale e l'altro il separatore delle migliaia.
+
+    s.remove(QRegularExpression("(?i)\\s*(sats?|satoshi)\\s*$"));
+    s.remove(QRegularExpression("\\s"));
+    s = s.trimmed();
+
+    if (s.startsWith('+')) s.remove(0, 1);
+    if (s.isEmpty() || s.startsWith('-')) return false;
+
+    const int lastComma = s.lastIndexOf(',');
+    const int lastDot = s.lastIndexOf('.');
+
+    QChar decimalSep;
+    QChar thousandsSep;
+
+    if (lastComma >= 0 && lastDot >= 0) {
+        if (lastComma > lastDot) {
+            decimalSep = ',';
+            thousandsSep = '.';
+        } else {
+            decimalSep = '.';
+            thousandsSep = ',';
+        }
+    } else if (lastComma >= 0 || lastDot >= 0) {
+        const QChar sep = lastComma >= 0 ? QChar(',') : QChar('.');
+        const int last = s.lastIndexOf(sep);
+        const int digitsAfter = s.size() - last - 1;
+        const int digitsBefore = last;
+
+        // Con un solo separatore c'e' un caso ambiguo: "78.489".
+        // Se ci sono esattamente 3 cifre dopo e al massimo 3 prima,
+        // lo interpretiamo come separatore delle migliaia (78.489 -> 78489).
+        // Negli altri casi lo interpretiamo come separatore decimale
+        // (3622.323 -> 3622,323 sat; 78489,696901 -> 78489,696901 sat).
+        if (s.count(sep) == 1 && digitsAfter == 3 && digitsBefore <= 3) {
+            thousandsSep = sep;
+        } else if (s.count(sep) == 1) {
+            decimalSep = sep;
+        } else {
+            // Piu' separatori uguali: accettiamo solo gruppi da migliaia
+            // del tipo 1.234.567 / 1,234,567.
+            const QStringList groups = s.split(sep);
+            if (groups.isEmpty() || groups.first().isEmpty() || groups.first().size() > 3)
+                return false;
+            for (int i = 0; i < groups.size(); ++i) {
+                if (!QRegularExpression("^\\d+$").match(groups[i]).hasMatch())
+                    return false;
+                if (i > 0 && groups[i].size() != 3)
+                    return false;
+            }
+            thousandsSep = sep;
+        }
+    }
+
+    if (!thousandsSep.isNull())
+        s.remove(thousandsSep);
+
+    QString wholePart = s;
+    QString fracPart;
+
+    if (!decimalSep.isNull()) {
+        if (s.count(decimalSep) != 1) return false;
+        const int pos = s.indexOf(decimalSep);
+        wholePart = s.left(pos);
+        fracPart = s.mid(pos + 1);
+    }
+
+    if (wholePart.isEmpty()) wholePart = "0";
+
+    if (!QRegularExpression("^\\d+$").match(wholePart).hasMatch())
+        return false;
+    if (!fracPart.isEmpty() &&
+        !QRegularExpression("^\\d+$").match(fracPart).hasMatch())
+        return false;
+
+    bool ok = false;
+    qint64 whole = wholePart.toLongLong(&ok);
+    if (!ok || whole < 0) return false;
+
+    // Arrotondamento "half up" al satoshi intero piu' vicino.
+    // Basta guardare la prima cifra decimale:
+    // 0,499... -> giu'; 0,500... -> su.
+    if (!fracPart.isEmpty() && fracPart.front() >= QChar('5')) {
+        if (whole == std::numeric_limits<qint64>::max()) return false;
+        ++whole;
+    }
+
+    *out = whole;
+    return true;
+}
+
+bool parseBtcToSats(QString s, qint64 *out) {
+    s = s.trimmed().toLower();
+    s.remove("btc");
+    s.remove(' ');
+    s.replace(',', '.');
+    if (s.startsWith('+')) s.remove(0,1);
+    if (s.startsWith('-') || s.isEmpty()) return false;
+    if (s.count('.') > 1) return false;
+    const QStringList parts = s.split('.');
+    bool okInt = false;
+    qint64 whole = parts[0].isEmpty() ? 0 : parts[0].toLongLong(&okInt);
+    if (parts[0].isEmpty()) okInt = true;
+    if (!okInt || whole < 0) return false;
+    QString frac = parts.size() > 1 ? parts[1] : QString();
+    if (frac.size() > 8 || !QRegularExpression("^\\d*$").match(frac).hasMatch()) return false;
+    frac = frac.leftJustified(8, '0');
+    bool okFrac = false;
+    qint64 fractional = frac.isEmpty() ? 0 : frac.toLongLong(&okFrac);
+    if (frac.isEmpty()) okFrac = true;
+    if (!okFrac) return false;
+    if (whole > (std::numeric_limits<qint64>::max() - fractional) / 100000000LL) return false;
+    *out = whole * 100000000LL + fractional;
+    return true;
+}
+
+QString satsToBtc(qint64 sats) {
+    const qint64 whole = sats / 100000000LL;
+    const qint64 frac = sats % 100000000LL;
+    return QString("%1.%2").arg(whole).arg(frac, 8, 10, QChar('0'));
+}
+
+QString formatEuro(qint64 cents) {
+    QLocale it(QLocale::Italian, QLocale::Italy);
+    return it.toCurrencyString(cents / 100.0, "EUR");
+}
+
+QString formatSats(qint64 sats) {
+    QLocale it(QLocale::Italian, QLocale::Italy);
+    return it.toString(sats);
+}
+
+QString csvEscape(const QString &s, QChar delimiter) {
+    QString out = s;
+    const bool needs = out.contains(delimiter) || out.contains('"') || out.contains('\n') || out.contains('\r');
+    out.replace("\"", "\"\"");
+    return needs ? QString("\"%1\"").arg(out) : out;
+}
+
+CsvImportResult importFile(const QString &path, const Database &db) {
+    CsvImportResult result;
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        result.errors << QString("Impossibile aprire il file: %1").arg(f.errorString());
+        return result;
+    }
+    QTextStream in(&f);
+    in.setEncoding(QStringConverter::Utf8);
+    if (in.atEnd()) { result.errors << "Il CSV è vuoto."; return result; }
+
+    QString headerLine = in.readLine();
+    if (!headerLine.isEmpty() && headerLine.front() == QChar(0xFEFF)) headerLine.remove(0,1);
+    const QChar delimiter = detectDelimiter(headerLine);
+    const QStringList headers = parseLine(headerLine, delimiter);
+
+    QMap<QString,int> idx;
+    for (int i=0;i<headers.size();++i) idx[normalizeHeader(headers[i])] = i;
+
+    auto find = [&](const QStringList &names)->int {
+        for (const auto &n : names) {
+            const auto key = normalizeHeader(n);
+            if (idx.contains(key)) return idx[key];
+        }
+        return -1;
+    };
+
+    const int iDate = find({"data", "date", "purchase date", "data acquisto"});
+    const int iSite = find({"sito", "site", "exchange", "piattaforma", "sito / exchange"});
+    const int iEuro = find({"euro", "eur", "euro spesi", "importo euro", "amount eur"});
+    const int iBtc  = find({"btc", "bitcoin", "btc on chain", "btc on-chain"});
+    const int iSats = find({"satoshi", "sats", "sat"});
+    const int iTx   = find({"tx", "txid", "transaction id", "id transazione", "tx / id transazione"});
+
+    if (iDate < 0 || iSite < 0 || iEuro < 0 || (iBtc < 0 && iSats < 0)) {
+        result.errors << "Intestazioni non riconosciute. Servono Data, Sito/Exchange, Euro e almeno BTC oppure Satoshi.";
+        return result;
+    }
+
+    QSet<QString> seenTx;
+    int lineNo = 1;
+    while (!in.atEnd()) {
+        ++lineNo;
+        const QString line = in.readLine();
+        if (line.trimmed().isEmpty()) continue;
+        const QStringList cells = parseLine(line, delimiter);
+        auto get = [&](int i)->QString { return (i >= 0 && i < cells.size()) ? cells[i].trimmed() : QString(); };
+
+        Purchase p;
+        p.date = parseDate(get(iDate));
+        p.site = get(iSite);
+        p.txid = get(iTx);
+        QStringList rowErrors;
+        if (!p.date.isValid()) rowErrors << "data non valida";
+        if (p.site.isEmpty()) rowErrors << "sito/exchange mancante";
+        if (!parseEuroCents(get(iEuro), &p.euroCents)) rowErrors << "euro non validi";
+
+        qint64 satsFromBtc = -1, satsFromSats = -1;
+        bool hasBtc = iBtc >= 0 && !get(iBtc).isEmpty();
+        bool hasSats = iSats >= 0 && !get(iSats).isEmpty();
+        bool btcOk = !hasBtc || parseBtcToSats(get(iBtc), &satsFromBtc);
+        bool satsOk = !hasSats || parseSats(get(iSats), &satsFromSats);
+        if (!btcOk) rowErrors << "BTC non validi";
+        if (!satsOk) rowErrors << "satoshi non validi";
+        if (!hasBtc && !hasSats) rowErrors << "BTC/satoshi mancanti";
+        if (hasBtc && hasSats && btcOk && satsOk && satsFromBtc != satsFromSats) rowErrors << "BTC e satoshi non coincidono";
+        if (rowErrors.isEmpty()) p.sats = hasSats ? satsFromSats : satsFromBtc;
+
+        if (!p.txid.isEmpty() && (db.txidExists(p.txid) || seenTx.contains(p.txid))) {
+            ++result.duplicateRows;
+            continue;
+        }
+        if (!p.txid.isEmpty()) seenTx.insert(p.txid);
+
+        if (!rowErrors.isEmpty()) {
+            result.errors << QString("Riga %1: %2").arg(lineNo).arg(rowErrors.join(", "));
+        } else {
+            result.validRows.push_back(p);
+        }
+    }
+    return result;
+}
+
+} // namespace CsvUtils

@@ -30,6 +30,7 @@ private slots:
     void backupDatabase();
     void showDatabasePath();
     void changeDatabaseFolder();
+    void resetApplication();
     void showAbout();
 
 private:
@@ -80,5 +81,6 @@ private:
     QAction *m_changeFolderAction{};
     QAction *m_italianAction{};
     QAction *m_englishAction{};
+    QAction *m_resetAction{};
     QAction *m_aboutAction{};
 };

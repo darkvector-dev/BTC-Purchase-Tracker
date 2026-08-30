@@ -579,6 +579,20 @@ bool MainWindow::chooseInitialCurrency(AppCurrency::Currency *currency) {
 bool MainWindow::initializeDatabase() {
     QSettings settings(kOrg, kApp);
     QString folder = settings.value(kDbKey).toString();
+
+    // Se QSettings ricorda ancora una cartella valida ma il database non esiste
+    // più, consideriamo l'avvio come una nuova configurazione. Questo evita che
+    // uno stato persistente di Windows/Linux sopravvissuto alla cancellazione
+    // dell'app venga scambiato per una configurazione ancora attiva.
+    if (!folder.isEmpty() && QDir(folder).exists()) {
+        const QString rememberedDatabase = QDir(folder).filePath(kDbName);
+        if (!QFile::exists(rememberedDatabase)) {
+            settings.remove(kDbKey);
+            settings.sync();
+            folder.clear();
+        }
+    }
+
     if (folder.isEmpty() || !QDir(folder).exists()) {
         QMessageBox::information(
             this,
@@ -786,6 +800,9 @@ void MainWindow::buildUi() {
     m_italianAction->setCheckable(true);
     m_englishAction->setCheckable(true);
 
+    m_settingsMenu->addSeparator();
+    m_resetAction = m_settingsMenu->addAction(QString(), this, &MainWindow::resetApplication);
+
     auto *languageGroup = new QActionGroup(this);
     languageGroup->setExclusive(true);
     languageGroup->addAction(m_italianAction);
@@ -874,6 +891,7 @@ void MainWindow::applyLanguage() {
     m_englishAction->setText("English");
     m_italianAction->setChecked(!AppLanguage::isEnglish());
     m_englishAction->setChecked(AppLanguage::isEnglish());
+    m_resetAction->setText(L("Ripristina applicazione…", "Reset application…"));
 
     m_infoMenu->setTitle("Info");
     m_aboutAction->setText("BTC Purchase Tracker");
@@ -895,6 +913,104 @@ void MainWindow::changeLanguage(bool english) {
     AppLanguage::setCurrent(language);
     applyLanguage();
     refresh();
+}
+
+void MainWindow::resetApplication() {
+    QMessageBox first(this);
+    first.setIcon(QMessageBox::Warning);
+    first.setWindowTitle(L("Ripristina applicazione", "Reset application"));
+    first.setText(L(
+        "Vuoi ripristinare completamente BTC Purchase Tracker?",
+        "Do you want to completely reset BTC Purchase Tracker?"
+    ));
+    first.setInformativeText(L(
+        "Il database corrente e il CSV automatico verranno eliminati definitivamente. "
+        "Saranno cancellate anche tutte le impostazioni dell'applicazione.\n\n"
+        "I backup manuali e i file CSV/PDF esportati NON verranno eliminati.",
+        "The current database and automatic CSV will be permanently deleted. "
+        "All application settings will also be cleared.\n\n"
+        "Manual backups and exported CSV/PDF files will NOT be deleted."
+    ));
+    auto *continueButton = first.addButton(
+        L("Continua", "Continue"), QMessageBox::DestructiveRole
+    );
+    auto *cancelButton = first.addButton(QMessageBox::Cancel);
+    first.setDefaultButton(cancelButton);
+    first.setEscapeButton(cancelButton);
+    first.exec();
+    if (first.clickedButton() != continueButton)
+        return;
+
+    QMessageBox second(this);
+    second.setIcon(QMessageBox::Critical);
+    second.setWindowTitle(L("Conferma eliminazione", "Confirm deletion"));
+    second.setText(L(
+        "ULTIMA CONFERMA: tutti gli acquisti presenti nel database corrente saranno persi.",
+        "FINAL CONFIRMATION: all purchases in the current database will be lost."
+    ));
+    auto *deleteButton = second.addButton(
+        L("ELIMINA TUTTO", "DELETE EVERYTHING"), QMessageBox::DestructiveRole
+    );
+    auto *cancelButton2 = second.addButton(QMessageBox::Cancel);
+    second.setDefaultButton(cancelButton2);
+    second.setEscapeButton(cancelButton2);
+    second.exec();
+    if (second.clickedButton() != deleteButton)
+        return;
+
+    const QString databasePath = m_db.filePath();
+    const QString automaticCsvPath = databasePath.isEmpty()
+        ? QString()
+        : QFileInfo(databasePath).absoluteDir().filePath(kAutoCsvName);
+
+    // Chiudiamo SQLite prima della cancellazione: è indispensabile soprattutto
+    // su Windows, dove un file aperto non può essere rimosso in sicurezza.
+    m_db.close();
+
+    if (!databasePath.isEmpty() && QFile::exists(databasePath) && !QFile::remove(databasePath)) {
+        QMessageBox::critical(
+            this,
+            L("Ripristino non riuscito", "Reset failed"),
+            L(
+                "Non è stato possibile eliminare il database. Nessuna impostazione è stata cancellata.",
+                "The database could not be deleted. No application settings were cleared."
+            ) + QStringLiteral("\n\n") + databasePath
+        );
+        // Proviamo a riaprire il database per lasciare l'app in uno stato usabile.
+        QString reopenError;
+        if (!m_db.open(databasePath, &reopenError)) {
+            QMessageBox::critical(
+                this,
+                L("Errore database", "Database error"),
+                reopenError
+            );
+            QMetaObject::invokeMethod(qApp, &QApplication::quit, Qt::QueuedConnection);
+        }
+        return;
+    }
+
+    if (!automaticCsvPath.isEmpty() && QFile::exists(automaticCsvPath))
+        QFile::remove(automaticCsvPath);
+
+    // QSettings è persistente anche se si elimina o si riestrae l'eseguibile:
+    // su Windows normalmente risiede nel Registro, su Linux nella config utente.
+    // clear() è quindi ciò che rende il prossimo avvio una vera "prima apertura".
+    QSettings settings(kOrg, kApp);
+    settings.clear();
+    settings.sync();
+
+    QMessageBox::information(
+        this,
+        L("Ripristino completato", "Reset complete"),
+        L(
+            "L'applicazione è stata ripristinata. Ora verrà chiusa.\n\n"
+            "Al prossimo avvio dovrai scegliere nuovamente la cartella del database e la valuta EUR/USD.",
+            "The application has been reset and will now close.\n\n"
+            "On the next launch you will choose the database folder and EUR/USD currency again."
+        )
+    );
+
+    QMetaObject::invokeMethod(qApp, &QApplication::quit, Qt::QueuedConnection);
 }
 
 void MainWindow::showAbout() {

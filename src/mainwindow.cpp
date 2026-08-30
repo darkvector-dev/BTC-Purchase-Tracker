@@ -44,6 +44,7 @@
 #include <QVector>
 
 #include <algorithm>
+#include <limits>
 
 
 class PurchasePriceChart : public QWidget {
@@ -53,6 +54,7 @@ public:
         setMinimumHeight(190);
         setMaximumHeight(230);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        setMouseTracking(true);
     }
 
     void setData(QVector<QPair<QDate, double>> points, double averagePrice) {
@@ -209,6 +211,73 @@ protected:
             painter.drawEllipse(point, 4.0, 4.0);
         }
 
+        // Indicatore interattivo: linea verticale rossa che segue il mouse.
+        // Data e prezzo mostrati sono quelli dell'acquisto reale più vicino
+        // alla posizione orizzontale del cursore.
+        if (m_hoverActive && m_hoverX >= plot.left() && m_hoverX <= plot.right()) {
+            const double hoverX = qBound(plot.left(), m_hoverX, plot.right());
+
+            int nearestIndex = 0;
+            double nearestDistance = std::numeric_limits<double>::max();
+
+            for (int i = 0; i < m_points.size(); ++i) {
+                const double distance = qAbs(xForIndex(i) - hoverX);
+                if (distance < nearestDistance) {
+                    nearestDistance = distance;
+                    nearestIndex = i;
+                }
+            }
+
+            const QPointF nearestPoint(
+                xForIndex(nearestIndex),
+                yForPrice(m_points[nearestIndex].second)
+            );
+
+            QColor hoverColor = Qt::red;
+            hoverColor.setAlpha(210);
+
+            painter.setPen(QPen(hoverColor, 1.2));
+            painter.drawLine(
+                QPointF(hoverX, plot.top()),
+                QPointF(hoverX, plot.bottom())
+            );
+
+            painter.setBrush(hoverColor);
+            painter.setPen(QPen(backgroundColor, 2.0));
+            painter.drawEllipse(nearestPoint, 6.0, 6.0);
+
+            const QString info =
+                m_points[nearestIndex].first.toString("dd/MM/yyyy")
+                + "   "
+                + it.toString(m_points[nearestIndex].second, 'f', 2)
+                + " €/BTC";
+
+            const QFontMetrics fm(painter.font());
+            const int textWidth = fm.horizontalAdvance(info);
+            const int boxWidth = textWidth + 18;
+            const int boxHeight = fm.height() + 12;
+
+            double boxX = hoverX + 10;
+            if (boxX + boxWidth > plot.right())
+                boxX = hoverX - boxWidth - 10;
+
+            boxX = qBound(plot.left(), boxX, plot.right() - boxWidth);
+            const double boxY = plot.top() + 8;
+
+            QRectF infoBox(boxX, boxY, boxWidth, boxHeight);
+
+            painter.setPen(QPen(gridColor, 1));
+            painter.setBrush(palette().color(QPalette::ToolTipBase));
+            painter.drawRoundedRect(infoBox, 5, 5);
+
+            painter.setPen(palette().color(QPalette::ToolTipText));
+            painter.drawText(
+                infoBox.adjusted(9, 5, -9, -5),
+                Qt::AlignCenter,
+                info
+            );
+        }
+
         // Date: prima, centrale (se utile), ultima.
         painter.setPen(mutedColor);
         const QString firstLabel = m_points.first().first.toString("dd/MM/yy");
@@ -238,9 +307,33 @@ protected:
         }
     }
 
+    void mouseMoveEvent(QMouseEvent *event) override {
+        const QRectF card = rect().adjusted(1, 1, -1, -1);
+        const QRectF plot = card.adjusted(72, 18, -20, -38);
+
+        m_hoverX = event->position().x();
+        m_hoverActive =
+            !m_points.isEmpty()
+            && event->position().y() >= plot.top()
+            && event->position().y() <= plot.bottom()
+            && m_hoverX >= plot.left()
+            && m_hoverX <= plot.right();
+
+        update();
+        QWidget::mouseMoveEvent(event);
+    }
+
+    void leaveEvent(QEvent *event) override {
+        m_hoverActive = false;
+        update();
+        QWidget::leaveEvent(event);
+    }
+
 private:
     QVector<QPair<QDate, double>> m_points;
     double m_averagePrice{};
+    double m_hoverX{};
+    bool m_hoverActive{false};
 };
 
 namespace {
@@ -485,7 +578,8 @@ void MainWindow::buildUi() {
     m_table->setSortingEnabled(true);
     m_table->verticalHeader()->setVisible(false);
     m_table->horizontalHeader()->setStretchLastSection(true);
-    m_table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    m_table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Interactive);
+    m_table->setColumnWidth(1, 180);
     outer->addWidget(m_table, 1);
 
     auto *actions = new QHBoxLayout;

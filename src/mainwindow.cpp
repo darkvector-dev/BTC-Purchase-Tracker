@@ -36,6 +36,7 @@
 #include <QPainterPath>
 #include <QPen>
 #include <QPushButton>
+#include <QPixmap>
 #include <QSaveFile>
 #include <QSet>
 #include <QSignalBlocker>
@@ -813,6 +814,8 @@ void MainWindow::buildUi() {
     languageGroup->addAction(m_englishAction);
 
     m_infoMenu = menuBar()->addMenu(QString());
+    m_supportAction = m_infoMenu->addAction(QString(), this, &MainWindow::showSupport);
+    m_infoMenu->addSeparator();
     m_aboutAction = m_infoMenu->addAction("BTC Purchase Tracker", this, &MainWindow::showAbout);
 
     connect(m_addButton, &QPushButton::clicked, this, &MainWindow::addPurchase);
@@ -898,6 +901,7 @@ void MainWindow::applyLanguage() {
     m_resetAction->setText(L("Ripristina applicazione…", "Reset application…"));
 
     m_infoMenu->setTitle("Info");
+    m_supportAction->setText(L("Supporta il progetto", "Support the project"));
     m_aboutAction->setText("BTC Purchase Tracker");
 
     if (!m_db.filePath().isEmpty())
@@ -1015,6 +1019,87 @@ void MainWindow::resetApplication() {
     );
 
     QMetaObject::invokeMethod(qApp, &QApplication::quit, Qt::QueuedConnection);
+}
+
+void MainWindow::showSupport() {
+    static const QString kBolt12Offer = QStringLiteral(
+        "lno1zrxq8pjw7qjlm68mtp7e3yvxee4y5xrgjhhyf2fxhlphpckrvevh50u0qfkkfnmh2d739044ttxpgpapuydfhdfyw3ydpxg4pxv744ht0alhwqszcnlggl8f30d2znup025rkfk273yacql657rhcqsnjejfpwlsu68sqveshamd756lt74t64ndh3s73lhk84ycy2w849spgnp0qcf7e34z7urtk342w344s53squgvk5wew52pzugqq06apaddtxkue25tj2chn6y5wc74u5dku38ghp0nd6l2p7c7xvy3uqqsnux4s49xwspgcgszj7mack5aqv"
+    );
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(L("Supporta il progetto", "Support the project"));
+    dialog.setModal(true);
+    dialog.setMinimumWidth(460);
+
+    auto *layout = new QVBoxLayout(&dialog);
+    layout->setContentsMargins(28, 24, 28, 20);
+    layout->setSpacing(14);
+
+    auto *title = new QLabel(L("⚡ Offrimi sats", "⚡ Tip sats"), &dialog);
+    QFont titleFont = title->font();
+    titleFont.setPointSize(titleFont.pointSize() + 4);
+    titleFont.setBold(true);
+    title->setFont(titleFont);
+    title->setAlignment(Qt::AlignCenter);
+
+    auto *description = new QLabel(
+        L(
+            "Se BTC Purchase Tracker ti è utile, puoi supportare il progetto con un'offerta in sats via Lightning.",
+            "If BTC Purchase Tracker is useful to you, you can support the project with a tip in sats via Lightning."
+        ),
+        &dialog
+    );
+    description->setWordWrap(true);
+    description->setAlignment(Qt::AlignCenter);
+
+    auto *qrLabel = new QLabel(&dialog);
+    const QPixmap qrPixmap(QStringLiteral(":/support/phoenix_bolt12_offer.png"));
+    qrLabel->setPixmap(qrPixmap);
+    qrLabel->setAlignment(Qt::AlignCenter);
+    qrLabel->setToolTip("BOLT12");
+
+    auto *offerType = new QLabel(
+        L("BOLT12 Offer · Phoenix", "BOLT12 Offer · Phoenix"),
+        &dialog
+    );
+    QFont offerFont = offerType->font();
+    offerFont.setBold(true);
+    offerType->setFont(offerFont);
+    offerType->setAlignment(Qt::AlignCenter);
+
+    auto *copyButton = new QPushButton(
+        L("Copia BOLT12 Offer", "Copy BOLT12 Offer"),
+        &dialog
+    );
+    connect(copyButton, &QPushButton::clicked, &dialog, [copyButton] {
+        QApplication::clipboard()->setText(kBolt12Offer);
+        copyButton->setText(L("✓ Copiata", "✓ Copied"));
+    });
+
+    auto *note = new QLabel(
+        L(
+            "Scansiona il QR con un wallet Lightning compatibile oppure copia la BOLT12 Offer.",
+            "Scan the QR with a compatible Lightning wallet or copy the BOLT12 Offer."
+        ),
+        &dialog
+    );
+    note->setWordWrap(true);
+    note->setAlignment(Qt::AlignCenter);
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+    buttons->button(QDialogButtonBox::Close)->setText(L("Chiudi", "Close"));
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    layout->addWidget(title);
+    layout->addWidget(description);
+    layout->addWidget(qrLabel, 0, Qt::AlignCenter);
+    layout->addWidget(offerType);
+    layout->addWidget(copyButton);
+    layout->addWidget(note);
+    layout->addSpacing(4);
+    layout->addWidget(buttons);
+
+    dialog.exec();
 }
 
 void MainWindow::showAbout() {

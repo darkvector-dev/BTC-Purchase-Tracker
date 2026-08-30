@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "csvutils.h"
+#include "currency.h"
 #include "language.h"
 #include "purchasedialog.h"
 
@@ -80,6 +81,11 @@ public:
         update();
     }
 
+    void setCurrency(AppCurrency::Currency currency) {
+        m_currency = currency;
+        update();
+    }
+
 protected:
     void paintEvent(QPaintEvent *event) override {
         Q_UNUSED(event);
@@ -135,8 +141,6 @@ protected:
             maxPrice += pad;
         }
 
-        QLocale it(QLocale::Italian, QLocale::Italy);
-
         // Griglia e scala prezzi.
         painter.setFont(QFont(painter.font().family(), qMax(8, painter.font().pointSize() - 1)));
         for (int i = 0; i <= 4; ++i) {
@@ -150,7 +154,7 @@ protected:
             painter.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y));
 
             painter.setPen(mutedColor);
-            const QString label = it.toString(price, 'f', 0) + " €";
+            const QString label = AppCurrency::formatMajor(price, m_currency, 0);
             painter.drawText(
                 QRectF(card.left() + 6, y - 9, 60, 18),
                 Qt::AlignRight | Qt::AlignVCenter,
@@ -199,7 +203,7 @@ protected:
             painter.drawText(
                 QRectF(plot.left() + 6, avgY - 20, plot.width() - 12, 18),
                 Qt::AlignRight | Qt::AlignVCenter,
-                L("Media ", "Average ") + it.toString(m_averagePrice, 'f', 0) + " €/BTC"
+                L("Media ", "Average ") + AppCurrency::formatMajor(m_averagePrice, m_currency, 0) + "/BTC"
             );
         }
 
@@ -262,8 +266,8 @@ protected:
             const QString info =
                 m_points[nearestIndex].first.toString("dd/MM/yyyy")
                 + "   "
-                + it.toString(m_points[nearestIndex].second, 'f', 2)
-                + " €/BTC";
+                + AppCurrency::formatMajor(m_points[nearestIndex].second, m_currency, 2)
+                + "/BTC";
 
             const QFontMetrics fm(painter.font());
             const int textWidth = fm.horizontalAdvance(info);
@@ -345,6 +349,7 @@ protected:
 private:
     QVector<QPair<QDate, double>> m_points;
     double m_averagePrice{};
+    AppCurrency::Currency m_currency{AppCurrency::Currency::Euro};
     double m_hoverX{};
     bool m_hoverActive{false};
 };
@@ -368,7 +373,7 @@ bool writeAutomaticCsvBackup(const Database &db, QString *error = nullptr) {
         return false;
     }
 
-    const auto [euro, sats] = db.totals(&queryError);
+    const auto [amountCents, sats] = db.totals(&queryError);
     if (!queryError.isEmpty()) {
         if (error) *error = queryError;
         return false;
@@ -390,22 +395,36 @@ bool writeAutomaticCsvBackup(const Database &db, QString *error = nullptr) {
     out << QChar(0xFEFF);
 
     const QChar delimiter = ';';
-    out << (AppLanguage::isEnglish()
-        ? "Date;Site / exchange;Euro spent;BTC on-chain;Satoshi;TX / Transaction ID\n"
-        : "Data;Sito / exchange;Euro spesi;BTC on-chain;Satoshi;TX / ID transazione\n");
+    const bool usd = db.currency() == AppCurrency::Currency::UsDollar;
+    const QString amountHeader = usd
+        ? L("Dollari spesi (USD)", "USD spent")
+        : L("Euro spesi", "Euro spent");
+
+    out << L("Data", "Date") << delimiter
+        << L("Sito / exchange", "Site / exchange") << delimiter
+        << amountHeader << delimiter
+        << "BTC on-chain" << delimiter
+        << "Satoshi" << delimiter
+        << L("TX / ID transazione", "TX / Transaction ID") << "\n";
 
     for (const auto &p : rows) {
+        QString btc = CsvUtils::satsToBtc(p.sats);
+        if (!usd) btc.replace('.', ',');
+
         out << p.date.toString("dd/MM/yyyy") << delimiter
             << CsvUtils::csvEscape(p.site, delimiter) << delimiter
-            << QString::number(p.euroCents / 100.0, 'f', 2).replace('.', ',') << delimiter
-            << CsvUtils::satsToBtc(p.sats).replace('.', ',') << delimiter
+            << AppCurrency::plainAmount(p.euroCents, db.currency()) << delimiter
+            << btc << delimiter
             << p.sats << delimiter
             << CsvUtils::csvEscape(p.txid, delimiter) << "\n";
     }
 
+    QString totalBtc = CsvUtils::satsToBtc(sats);
+    if (!usd) totalBtc.replace('.', ',');
+
     out << "\n" << L("TOTALI", "TOTALS") << ";;"
-        << QString::number(euro / 100.0, 'f', 2).replace('.', ',') << delimiter
-        << CsvUtils::satsToBtc(sats).replace('.', ',') << delimiter
+        << AppCurrency::plainAmount(amountCents, db.currency()) << delimiter
+        << totalBtc << delimiter
         << sats << delimiter << "\n";
 
     if (!file.commit()) {
@@ -515,6 +534,48 @@ QString MainWindow::chooseDatabaseFolder(const QString &title, const QString &in
     return QFileDialog::getExistingDirectory(this, title, start, QFileDialog::ShowDirsOnly);
 }
 
+bool MainWindow::chooseInitialCurrency(AppCurrency::Currency *currency) {
+    if (!currency) return false;
+
+    QMessageBox box(this);
+    box.setIcon(QMessageBox::Question);
+    box.setWindowTitle(L("Valuta del database", "Database currency"));
+    box.setText(L(
+        "Scegli la valuta da usare per questo database.",
+        "Choose the currency to use for this database."
+    ));
+    box.setInformativeText(L(
+        "La scelta sarà permanente per questo database e non potrà essere modificata in seguito. "
+        "Non verrà effettuata alcuna conversione tra euro e dollari.",
+        "This choice is permanent for this database and cannot be changed later. "
+        "No conversion between euros and US dollars will be performed."
+    ));
+
+    auto *euroButton = box.addButton(QString::fromUtf8("Euro (€)"), QMessageBox::AcceptRole);
+    auto *usdButton = box.addButton(
+        L("Dollaro USA ($)", "US Dollar ($)"),
+        QMessageBox::AcceptRole
+    );
+    auto *cancelButton = box.addButton(QMessageBox::Cancel);
+
+    // La scelta è permanente: Enter/Esc non devono selezionare per errore
+    // una valuta. Il default sicuro è annullare.
+    box.setDefaultButton(cancelButton);
+    box.setEscapeButton(cancelButton);
+
+    box.exec();
+
+    if (box.clickedButton() == euroButton) {
+        *currency = AppCurrency::Currency::Euro;
+        return true;
+    }
+    if (box.clickedButton() == usdButton) {
+        *currency = AppCurrency::Currency::UsDollar;
+        return true;
+    }
+    return false;
+}
+
 bool MainWindow::initializeDatabase() {
     QSettings settings(kOrg, kApp);
     QString folder = settings.value(kDbKey).toString();
@@ -550,16 +611,49 @@ bool MainWindow::openDatabaseAt(const QString &folder, bool remember) {
         );
         return false;
     }
+
     const QString path = dir.filePath(kDbName);
+    const bool databaseExisted = QFile::exists(path);
+
+    AppCurrency::Currency newDatabaseCurrency = AppCurrency::Currency::Euro;
+    if (!databaseExisted && !chooseInitialCurrency(&newDatabaseCurrency))
+        return false;
+
     QString error;
     if (!m_db.open(path, &error)) {
         QMessageBox::critical(this, L("Errore database", "Database error"), error);
         return false;
     }
+
+    // I database creati dalle versioni precedenti erano esclusivamente EUR.
+    // Alla prima apertura vengono marcati automaticamente senza chiedere nulla.
+    if (!m_db.hasStoredCurrency()) {
+        const AppCurrency::Currency currency = databaseExisted
+            ? AppCurrency::Currency::Euro
+            : newDatabaseCurrency;
+
+        if (!m_db.setCurrency(currency, &error)) {
+            QMessageBox::critical(this, L("Errore database", "Database error"), error);
+            m_db.close();
+
+            // Se la configurazione di un database appena creato non riesce,
+            // eliminiamo il file vuoto/parziale. Al prossimo avvio verrà quindi
+            // chiesta di nuovo la valuta invece di scambiarlo per un DB legacy.
+            if (!databaseExisted)
+                QFile::remove(path);
+
+            return false;
+        }
+    }
+
     if (remember) {
         QSettings settings(kOrg, kApp);
         settings.setValue(kDbKey, QFileInfo(folder).absoluteFilePath());
     }
+
+    // buildUi() viene eseguito prima dell'apertura del database: ora che la
+    // valuta è nota aggiorniamo immediatamente tutte le etichette.
+    applyLanguage();
 
     QString csvError;
     if (!writeAutomaticCsvBackup(m_db, &csvError)) {
@@ -727,10 +821,16 @@ void MainWindow::buildUi() {
 void MainWindow::applyLanguage() {
     m_addButton->setText(L("+ Nuovo acquisto", "+ New purchase"));
 
-    m_cardEuroCaption->setText(L("EURO SPESI", "EURO SPENT"));
+    const bool usd = m_db.currency() == AppCurrency::Currency::UsDollar;
+    m_cardEuroCaption->setText(usd
+        ? L("DOLLARI SPESI", "USD SPENT")
+        : L("EURO SPESI", "EURO SPENT"));
     m_cardBtcCaption->setText(L("BTC ACQUISTATI", "BTC PURCHASED"));
     m_cardSatsCaption->setText("SATOSHI");
-    m_cardAverageCaption->setText(L("PREZZO MEDIO €/BTC", "AVERAGE PRICE €/BTC"));
+    m_cardAverageCaption->setText(
+        L("PREZZO MEDIO ", "AVERAGE PRICE ")
+        + AppCurrency::pricePerBtcUnit(m_db.currency())
+    );
 
     const QString copyTip = L("Clicca per copiare", "Click to copy");
     m_totalEuro->setToolTip(copyTip);
@@ -746,12 +846,12 @@ void MainWindow::applyLanguage() {
 
     m_chartTitle->setText(L("ANDAMENTO PREZZO DI ACQUISTO", "PURCHASE PRICE TREND"));
     if (m_priceChart)
-        m_priceChart->update();
+        m_priceChart->setCurrency(m_db.currency());
 
     m_table->setHorizontalHeaderLabels({
         L("Data", "Date"),
         L("Sito / exchange", "Site / exchange"),
-        "Euro",
+        AppCurrency::code(m_db.currency()),
         "BTC on-chain",
         "Satoshi",
         L("TX / ID transazione", "TX / Transaction ID")
@@ -922,7 +1022,7 @@ void MainWindow::refresh() {
     QVector<Purchase> rows;
     rows.reserve(allRows.size());
 
-    qint64 euro = 0;
+    qint64 amountCents = 0;
     qint64 sats = 0;
 
     for (const auto &p : allRows) {
@@ -930,7 +1030,7 @@ void MainWindow::refresh() {
             continue;
 
         rows.push_back(p);
-        euro += p.euroCents;
+        amountCents += p.euroCents;
         sats += p.sats;
     }
 
@@ -956,7 +1056,7 @@ void MainWindow::refresh() {
 
         setSortable(0, p.date.toString("dd/MM/yyyy"), p.date.toJulianDay());
         set(1, p.site);
-        setSortable(2, CsvUtils::formatEuro(p.euroCents), p.euroCents);
+        setSortable(2, CsvUtils::formatMoney(p.euroCents, m_db.currency()), p.euroCents);
         setSortable(3, CsvUtils::satsToBtc(p.sats), p.sats);
         setSortable(4, CsvUtils::formatSats(p.sats), p.sats);
         set(5, p.txid);
@@ -965,32 +1065,30 @@ void MainWindow::refresh() {
 
     m_table->setSortingEnabled(true);
 
-    m_totalEuro->setText(CsvUtils::formatEuro(euro));
+    m_totalEuro->setText(CsvUtils::formatMoney(amountCents, m_db.currency()));
     m_totalBtc->setText(CsvUtils::satsToBtc(sats) + " BTC");
     m_totalSats->setText(CsvUtils::formatSats(sats) + " sats");
 
-    // Prezzo medio di acquisto: euro investiti / BTC acquistati.
+    // Prezzo medio di acquisto: valuta investita / BTC acquistati.
     // È solo un valore di visualizzazione: i dati salvati restano interi
-    // (centesimi di euro e satoshi).
-    double averageEurPerBtc = 0.0;
+    // (centesimi della valuta scelta e satoshi).
+    double averageFiatPerBtc = 0.0;
 
     if (sats > 0) {
         const long double average =
-            static_cast<long double>(euro) * 1000000.0L /
+            static_cast<long double>(amountCents) * 1000000.0L /
             static_cast<long double>(sats);
 
-        averageEurPerBtc = static_cast<double>(average);
+        averageFiatPerBtc = static_cast<double>(average);
 
-        QLocale it(QLocale::Italian, QLocale::Italy);
         m_averagePrice->setText(
-            it.toCurrencyString(averageEurPerBtc, "EUR")
+            AppCurrency::formatMajor(averageFiatPerBtc, m_db.currency(), 2)
         );
 
-        m_averagePrice->setProperty(
-            "clipboardValue",
-            QString::number(averageEurPerBtc, 'f', 2)
-                .replace('.', ',')
-        );
+        QString averageClipboard = QString::number(averageFiatPerBtc, 'f', 2);
+        if (m_db.currency() == AppCurrency::Currency::Euro)
+            averageClipboard.replace('.', ',');
+        m_averagePrice->setProperty("clipboardValue", averageClipboard);
     } else {
         m_averagePrice->setText("—");
         m_averagePrice->setProperty("clipboardValue", QString());
@@ -1013,12 +1111,12 @@ void MainWindow::refresh() {
     }
 
     if (m_priceChart)
-        m_priceChart->setData(chartPoints, averageEurPerBtc);
+        m_priceChart->setData(chartPoints, averageFiatPerBtc);
 
     // Valori puliti copiati negli appunti al clic sui totali.
     m_totalEuro->setProperty(
         "clipboardValue",
-        QString::number(euro / 100.0, 'f', 2).replace('.', ',')
+        AppCurrency::plainAmount(amountCents, m_db.currency())
     );
     m_totalBtc->setProperty(
         "clipboardValue",
@@ -1046,7 +1144,7 @@ Purchase MainWindow::selectedPurchase() const {
 }
 
 void MainWindow::addPurchase() {
-    PurchaseDialog dlg(this);
+    PurchaseDialog dlg(this, m_db.currency());
     if (dlg.exec() != QDialog::Accepted) return;
     Purchase p = dlg.purchase();
     if (!p.txid.isEmpty() && m_db.txidExists(p.txid)) {
@@ -1090,7 +1188,7 @@ void MainWindow::editPurchase() {
         return;
     }
 
-    PurchaseDialog dlg(this, &p);
+    PurchaseDialog dlg(this, m_db.currency(), &p);
     if (dlg.exec() != QDialog::Accepted) return;
     Purchase updated = dlg.purchase();
 
@@ -1263,23 +1361,37 @@ void MainWindow::exportCsv() {
     out << QChar(0xFEFF);
     const QChar d=';';
 
-    out << (AppLanguage::isEnglish()
-        ? "Date;Site / exchange;Euro spent;BTC on-chain;Satoshi;TX / Transaction ID\n"
-        : "Data;Sito / exchange;Euro spesi;BTC on-chain;Satoshi;TX / ID transazione\n");
+    const bool usd = m_db.currency() == AppCurrency::Currency::UsDollar;
+    const QString amountHeader = usd
+        ? L("Dollari spesi (USD)", "USD spent")
+        : L("Euro spesi", "Euro spent");
+
+    out << L("Data", "Date") << d
+        << L("Sito / exchange", "Site / exchange") << d
+        << amountHeader << d
+        << "BTC on-chain" << d
+        << "Satoshi" << d
+        << L("TX / ID transazione", "TX / Transaction ID") << "\n";
 
     for (const auto &p : rows) {
+        QString btc = CsvUtils::satsToBtc(p.sats);
+        if (!usd) btc.replace('.', ',');
+
         out << p.date.toString("dd/MM/yyyy") << d
             << CsvUtils::csvEscape(p.site,d) << d
-            << QString::number(p.euroCents/100.0,'f',2).replace('.',',') << d
-            << CsvUtils::satsToBtc(p.sats).replace('.',',') << d
+            << AppCurrency::plainAmount(p.euroCents, m_db.currency()) << d
+            << btc << d
             << p.sats << d
             << CsvUtils::csvEscape(p.txid,d) << "\n";
     }
 
-    const auto [euro,sats]=m_db.totals();
+    const auto [amountCents,sats]=m_db.totals();
+    QString totalBtc = CsvUtils::satsToBtc(sats);
+    if (!usd) totalBtc.replace('.', ',');
+
     out << "\n" << L("TOTALI", "TOTALS") << ";;"
-        << QString::number(euro/100.0,'f',2).replace('.',',') << d
-        << CsvUtils::satsToBtc(sats).replace('.',',') << d
+        << AppCurrency::plainAmount(amountCents, m_db.currency()) << d
+        << totalBtc << d
         << sats << d << "\n";
 
     if (!f.commit()) {
@@ -1328,7 +1440,7 @@ void MainWindow::exportPdf() {
     writer.setPageOrientation(QPageLayout::Landscape);
     writer.setResolution(120);
 
-    const auto [euro,sats] = m_db.totals();
+    const auto [amountCents,sats] = m_db.totals();
     QString html = "<html><head><style>body{font-family:sans-serif;font-size:9pt;}h1{font-size:18pt;}"
                    "table{border-collapse:collapse;width:100%;}th,td{border:1px solid #aaa;padding:5px;}"
                    "th{background:#eee;}td.num{text-align:right;} .tot{font-size:11pt;margin:12px 0;}</style></head><body>";
@@ -1340,18 +1452,21 @@ void MainWindow::exportPdf() {
 
     html += QString("<div class='tot'><b>%1:</b> %2 &nbsp;&nbsp; <b>%3:</b> %4 &nbsp;&nbsp; <b>%5:</b> %6</div>")
         .arg(
-            L("Totale euro spesi", "Total euro spent"),
-            htmlEscape(CsvUtils::formatEuro(euro)),
+            m_db.currency() == AppCurrency::Currency::UsDollar
+                ? L("Totale dollari spesi", "Total USD spent")
+                : L("Totale euro spesi", "Total euro spent"),
+            htmlEscape(CsvUtils::formatMoney(amountCents, m_db.currency())),
             L("Totale BTC", "Total BTC"),
             CsvUtils::satsToBtc(sats),
             L("Totale satoshi", "Total satoshi"),
             htmlEscape(CsvUtils::formatSats(sats))
         );
 
-    html += QString("<table><tr><th>%1</th><th>%2</th><th>Euro</th><th>BTC on-chain</th><th>Satoshi</th><th>%3</th></tr>")
+    html += QString("<table><tr><th>%1</th><th>%2</th><th>%3</th><th>BTC on-chain</th><th>Satoshi</th><th>%4</th></tr>")
         .arg(
             L("Data", "Date"),
             L("Sito / exchange", "Site / exchange"),
+            AppCurrency::code(m_db.currency()),
             L("TX / ID transazione", "TX / Transaction ID")
         );
 
@@ -1360,7 +1475,7 @@ void MainWindow::exportPdf() {
             .arg(
                 p.date.toString("dd/MM/yyyy"),
                 htmlEscape(p.site),
-                htmlEscape(CsvUtils::formatEuro(p.euroCents)),
+                htmlEscape(CsvUtils::formatMoney(p.euroCents, m_db.currency())),
                 CsvUtils::satsToBtc(p.sats),
                 htmlEscape(CsvUtils::formatSats(p.sats)),
                 htmlEscape(p.txid)

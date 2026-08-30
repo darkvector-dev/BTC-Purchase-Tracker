@@ -71,30 +71,85 @@ QDate parseDate(QString s) {
     return {};
 }
 
-bool parseEuroCents(QString s, qint64 *out) {
+bool parseMoneyCents(QString s, AppCurrency::Currency currency, qint64 *out) {
     s = s.trimmed();
-    s.remove(QChar(u'€'));
-    s.remove(QRegularExpression("\\s"));
-    if (s.isEmpty()) return false;
 
+    // Rifiuta esplicitamente un simbolo/codice di valuta diverso da quello
+    // scelto per il database, così un importo non può essere reinterpretato
+    // accidentalmente come EUR o USD.
+    const QString lower = s.toLower();
+    if (currency == AppCurrency::Currency::Euro) {
+        if (s.contains('$') || lower.contains("usd") || lower.contains("dollar"))
+            return false;
+        s.remove(QChar(u'€'));
+        s.remove(QRegularExpression("(?i)\\b(eur|euros?)\\b"));
+    } else {
+        if (s.contains(QChar(u'€')) || lower.contains("eur") || lower.contains("euro"))
+            return false;
+        s.remove('$');
+        s.remove(QRegularExpression("(?i)\\b(usd|us\\s*dollars?|dollars?)\\b"));
+    }
+
+    s.remove(QRegularExpression("\\s"));
+    if (s.startsWith('+')) s.remove(0, 1);
+    if (s.isEmpty() || s.startsWith('-')) return false;
+    if (!QRegularExpression("^[0-9.,]+$").match(s).hasMatch()) return false;
+
+    const int commaCount = s.count(',');
+    const int dotCount = s.count('.');
     const int lastComma = s.lastIndexOf(',');
     const int lastDot = s.lastIndexOf('.');
+
     QChar decimalSep;
-    if (lastComma >= 0 && lastDot >= 0) decimalSep = (lastComma > lastDot) ? ',' : '.';
-    else if (lastComma >= 0) decimalSep = ',';
-    else if (lastDot >= 0) {
-        // A single dot followed by exactly 3 digits is more likely a thousands separator.
-        decimalSep = (s.size() - lastDot - 1 == 3) ? QChar() : '.';
+    QChar thousandsSep;
+
+    if (commaCount > 0 && dotCount > 0) {
+        // Con entrambi i separatori, l'ultimo è il separatore decimale.
+        decimalSep = lastComma > lastDot ? QChar(',') : QChar('.');
+        thousandsSep = decimalSep == QChar(',') ? QChar('.') : QChar(',');
+    } else if (commaCount > 0 || dotCount > 0) {
+        const QChar sep = commaCount > 0 ? QChar(',') : QChar('.');
+        const int count = s.count(sep);
+        const int last = s.lastIndexOf(sep);
+        const int digitsAfter = s.size() - last - 1;
+
+        if (count == 1) {
+            if (digitsAfter == 1 || digitsAfter == 2) {
+                decimalSep = sep;
+            } else if (digitsAfter == 3) {
+                // 1.234 / 1,234 viene interpretato come separatore migliaia.
+                thousandsSep = sep;
+            } else {
+                return false;
+            }
+        } else {
+            // Più separatori uguali: accettiamo solo gruppi da migliaia.
+            const QStringList groups = s.split(sep);
+            if (groups.isEmpty() || groups.first().isEmpty() || groups.first().size() > 3)
+                return false;
+            for (int i = 0; i < groups.size(); ++i) {
+                if (!QRegularExpression("^\\d+$").match(groups[i]).hasMatch())
+                    return false;
+                if (i > 0 && groups[i].size() != 3)
+                    return false;
+            }
+            thousandsSep = sep;
+        }
     }
 
-    QString normalized;
-    for (QChar c : s) {
-        if (c.isDigit() || c == '-' || (!decimalSep.isNull() && c == decimalSep)) normalized += c;
+    if (!thousandsSep.isNull())
+        s.remove(thousandsSep);
+
+    if (!decimalSep.isNull()) {
+        if (s.count(decimalSep) != 1) return false;
+        s.replace(decimalSep, '.');
     }
-    if (!decimalSep.isNull()) normalized.replace(decimalSep, '.');
+
+    if (!QRegularExpression("^\\d+(?:\\.\\d{1,2})?$").match(s).hasMatch())
+        return false;
 
     bool ok = false;
-    double val = normalized.toDouble(&ok);
+    const double val = s.toDouble(&ok);
     if (!ok || val < 0.0) return false;
     *out = qRound64(val * 100.0);
     return true;
@@ -235,9 +290,8 @@ QString satsToBtc(qint64 sats) {
     return QString("%1.%2").arg(whole).arg(frac, 8, 10, QChar('0'));
 }
 
-QString formatEuro(qint64 cents) {
-    QLocale it(QLocale::Italian, QLocale::Italy);
-    return it.toCurrencyString(cents / 100.0, "EUR");
+QString formatMoney(qint64 cents, AppCurrency::Currency currency) {
+    return AppCurrency::formatMoney(cents, currency);
 }
 
 QString formatSats(qint64 sats) {
@@ -281,16 +335,31 @@ CsvImportResult importFile(const QString &path, const Database &db) {
 
     const int iDate = find({"data", "date", "purchase date", "data acquisto"});
     const int iSite = find({"sito", "site", "exchange", "piattaforma", "sito / exchange", "site / exchange"});
-    const int iEuro = find({"euro", "eur", "euro spesi", "importo euro", "amount eur", "euro spent"});
+    const int iEuro = find({"euro", "eur", "euro spesi", "importo euro", "amount eur", "euro spent", "eur spent"});
+    const int iUsd  = find({"usd", "dollari", "dollari spesi", "dollari spesi (usd)", "importo usd", "importo dollari", "amount usd", "usd spent", "us dollars spent", "dollars spent"});
     const int iBtc  = find({"btc", "bitcoin", "btc on chain", "btc on-chain"});
     const int iSats = find({"satoshi", "sats", "sat"});
     const int iTx   = find({"tx", "txid", "transaction id", "id transazione", "tx / id transazione", "tx / transaction id"});
 
-    if (iDate < 0 || iSite < 0 || iEuro < 0 || (iBtc < 0 && iSats < 0)) {
-        result.errors << L(
-            "Intestazioni non riconosciute. Servono Data, Sito/Exchange, Euro e almeno BTC oppure Satoshi.",
-            "Unrecognized headers. Date, Site/Exchange, Euro and at least BTC or Satoshi are required."
-        );
+    const bool useUsd = db.currency() == AppCurrency::Currency::UsDollar;
+    const int iAmount = useUsd ? iUsd : iEuro;
+    const int iWrongCurrency = useUsd ? iEuro : iUsd;
+
+    if (iAmount < 0 && iWrongCurrency >= 0) {
+        result.errors << (AppLanguage::isEnglish()
+            ? QString("Currency mismatch: this database uses %1, but the CSV declares %2.")
+                  .arg(AppCurrency::code(db.currency()), useUsd ? QStringLiteral("EUR") : QStringLiteral("USD"))
+            : QString("Valuta non corrispondente: questo database usa %1, ma il CSV dichiara %2.")
+                  .arg(AppCurrency::code(db.currency()), useUsd ? QStringLiteral("EUR") : QStringLiteral("USD")));
+        return result;
+    }
+
+    if (iDate < 0 || iSite < 0 || iAmount < 0 || (iBtc < 0 && iSats < 0)) {
+        result.errors << (AppLanguage::isEnglish()
+            ? QString("Unrecognized headers. Date, Site/Exchange, %1 and at least BTC or Satoshi are required.")
+                  .arg(AppCurrency::code(db.currency()))
+            : QString("Intestazioni non riconosciute. Servono Data, Sito/Exchange, %1 e almeno BTC oppure Satoshi.")
+                  .arg(AppCurrency::code(db.currency())));
         return result;
     }
 
@@ -310,7 +379,11 @@ CsvImportResult importFile(const QString &path, const Database &db) {
         QStringList rowErrors;
         if (!p.date.isValid()) rowErrors << L("data non valida", "invalid date");
         if (p.site.isEmpty()) rowErrors << L("sito/exchange mancante", "missing site/exchange");
-        if (!parseEuroCents(get(iEuro), &p.euroCents)) rowErrors << L("euro non validi", "invalid euro amount");
+        if (!parseMoneyCents(get(iAmount), db.currency(), &p.euroCents)) {
+            rowErrors << (useUsd
+                ? L("dollari non validi", "invalid USD amount")
+                : L("euro non validi", "invalid euro amount"));
+        }
 
         qint64 satsFromBtc = -1, satsFromSats = -1;
         bool hasBtc = iBtc >= 0 && !get(iBtc).isEmpty();

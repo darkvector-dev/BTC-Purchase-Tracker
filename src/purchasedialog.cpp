@@ -17,7 +17,11 @@ QString L(const char *italian, const char *english) {
 }
 }
 
-PurchaseDialog::PurchaseDialog(QWidget *parent, const Purchase *initial) : QDialog(parent) {
+PurchaseDialog::PurchaseDialog(
+    QWidget *parent,
+    AppCurrency::Currency currency,
+    const Purchase *initial
+) : QDialog(parent), m_currency(currency) {
     setWindowTitle(initial
         ? L("Modifica acquisto", "Edit purchase")
         : L("Nuovo acquisto", "New purchase"));
@@ -27,8 +31,12 @@ PurchaseDialog::PurchaseDialog(QWidget *parent, const Purchase *initial) : QDial
     m_date->setCalendarPopup(true);
     m_date->setDisplayFormat("dd/MM/yyyy");
     m_site = new QLineEdit(this);
-    m_euro = new QLineEdit(this);
-    m_euro->setPlaceholderText(L("es. 250,00", "e.g. 250.00"));
+    m_amount = new QLineEdit(this);
+    m_amount->setPlaceholderText(
+        currency == AppCurrency::Currency::UsDollar
+            ? L("es. 250.00", "e.g. 250.00")
+            : L("es. 250,00", "e.g. 250.00")
+    );
     m_btc = new QLineEdit(this);
     m_btc->setPlaceholderText(L("es. 0,00234567", "e.g. 0.00234567"));
     m_sats = new QLineEdit(this);
@@ -39,7 +47,7 @@ PurchaseDialog::PurchaseDialog(QWidget *parent, const Purchase *initial) : QDial
         m_purchase = *initial;
         m_date->setDate(initial->date);
         m_site->setText(initial->site);
-        m_euro->setText(QString::number(initial->euroCents / 100.0, 'f', 2).replace('.', ','));
+        m_amount->setText(AppCurrency::plainAmount(initial->euroCents, m_currency));
         m_btc->setText(CsvUtils::satsToBtc(initial->sats));
         m_sats->setText(QString::number(initial->sats));
         m_txid->setText(initial->txid);
@@ -48,7 +56,12 @@ PurchaseDialog::PurchaseDialog(QWidget *parent, const Purchase *initial) : QDial
     auto *form = new QFormLayout;
     form->addRow(L("Data", "Date"), m_date);
     form->addRow(L("Sito / exchange", "Site / exchange"), m_site);
-    form->addRow(L("Euro spesi", "Euro spent"), m_euro);
+    form->addRow(
+        m_currency == AppCurrency::Currency::UsDollar
+            ? L("Dollari spesi (USD)", "US dollars spent")
+            : L("Euro spesi", "Euro spent"),
+        m_amount
+    );
     form->addRow("BTC on-chain", m_btc);
     form->addRow("Satoshi", m_sats);
     form->addRow(L("TX / ID transazione", "TX / Transaction ID"), m_txid);
@@ -126,11 +139,13 @@ void PurchaseDialog::validateAndAccept() {
         return;
     }
 
-    if (!CsvUtils::parseEuroCents(m_euro->text(), &p.euroCents)) {
+    if (!CsvUtils::parseMoneyCents(m_amount->text(), m_currency, &p.euroCents)) {
         QMessageBox::warning(
             this,
             L("Dato non valido", "Invalid data"),
-            L("L'importo in euro non è valido.", "The euro amount is not valid.")
+            m_currency == AppCurrency::Currency::UsDollar
+                ? L("L'importo in dollari non è valido.", "The US dollar amount is not valid.")
+                : L("L'importo in euro non è valido.", "The euro amount is not valid.")
         );
         return;
     }

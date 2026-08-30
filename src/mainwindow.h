@@ -35,6 +35,7 @@ private slots:
 private:
     bool initializeDatabase();
     bool openDatabaseAt(const QString &folder, bool remember = true);
+    bool chooseInitialCurrency(AppCurrency::Currency *currency);
     void buildUi();
     void applyLanguage();
     void changeLanguage(bool english);

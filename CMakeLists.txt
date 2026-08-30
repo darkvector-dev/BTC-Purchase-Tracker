@@ -14,6 +14,7 @@ add_executable(btc-purchase-tracker
     src/mainwindow.cpp
     src/mainwindow.h
     src/language.h
+    src/currency.h
     src/purchasedialog.cpp
     src/purchasedialog.h
     src/database.cpp

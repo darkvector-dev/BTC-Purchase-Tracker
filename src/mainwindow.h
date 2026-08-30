@@ -6,6 +6,9 @@
 class QLabel;
 class QTableWidget;
 class QComboBox;
+class QPushButton;
+class QMenu;
+class QAction;
 class PurchasePriceChart;
 class QCloseEvent;
 
@@ -27,12 +30,18 @@ private slots:
     void backupDatabase();
     void showDatabasePath();
     void changeDatabaseFolder();
+    void resetApplication();
+    void exportDiagnosticLog();
+    void showSupport();
     void showAbout();
 
 private:
     bool initializeDatabase();
     bool openDatabaseAt(const QString &folder, bool remember = true);
+    bool chooseInitialCurrency(AppCurrency::Currency *currency);
     void buildUi();
+    void applyLanguage();
+    void changeLanguage(bool english);
     void refresh();
     void restoreUiState();
     void saveUiState() const;
@@ -49,4 +58,33 @@ private:
     QComboBox *m_yearFilter{};
     PurchasePriceChart *m_priceChart{};
     QLabel *m_dbPath{};
+
+    QLabel *m_cardEuroCaption{};
+    QLabel *m_cardBtcCaption{};
+    QLabel *m_cardSatsCaption{};
+    QLabel *m_cardAverageCaption{};
+    QLabel *m_filterLabel{};
+    QLabel *m_chartTitle{};
+
+    QPushButton *m_addButton{};
+    QPushButton *m_editButton{};
+    QPushButton *m_deleteButton{};
+    QPushButton *m_importButton{};
+    QPushButton *m_exportCsvButton{};
+    QPushButton *m_exportPdfButton{};
+    QPushButton *m_backupButton{};
+
+    QMenu *m_databaseMenu{};
+    QMenu *m_settingsMenu{};
+    QMenu *m_languageMenu{};
+    QMenu *m_infoMenu{};
+
+    QAction *m_showPathAction{};
+    QAction *m_changeFolderAction{};
+    QAction *m_italianAction{};
+    QAction *m_englishAction{};
+    QAction *m_resetAction{};
+    QAction *m_exportLogAction{};
+    QAction *m_supportAction{};
+    QAction *m_aboutAction{};
 };

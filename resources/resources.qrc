@@ -2,4 +2,7 @@
     <qresource prefix="/icons">
         <file alias="btc_purchase_tracker_icon.png">../assets/btc_purchase_tracker_icon.png</file>
     </qresource>
+    <qresource prefix="/support">
+        <file alias="phoenix_bolt12_offer.png">phoenix_bolt12_offer.png</file>
+    </qresource>
 </RCC>

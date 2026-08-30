@@ -22,7 +22,9 @@ bool Database::open(const QString &filePath, QString *error) {
         return false;
     }
     m_filePath = QFileInfo(filePath).absoluteFilePath();
-    return ensureSchema(error);
+    if (!ensureSchema(error))
+        return false;
+    return loadCurrency(error);
 }
 
 void Database::close() {
@@ -33,6 +35,8 @@ void Database::close() {
         QSqlDatabase::removeDatabase(name);
     }
     m_filePath.clear();
+    m_currency = AppCurrency::Currency::Euro;
+    m_hasStoredCurrency = false;
 }
 
 bool Database::ensureSchema(QString *error) {
@@ -56,6 +60,70 @@ bool Database::ensureSchema(QString *error) {
         if (error) *error = q.lastError().text();
         return false;
     }
+    if (!q.exec(R"SQL(
+        CREATE TABLE IF NOT EXISTS app_metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+    )SQL")) {
+        if (error) *error = q.lastError().text();
+        return false;
+    }
+    return true;
+}
+
+bool Database::loadCurrency(QString *error) {
+    m_currency = AppCurrency::Currency::Euro;
+    m_hasStoredCurrency = false;
+
+    QSqlQuery q(m_db);
+    q.prepare("SELECT value FROM app_metadata WHERE key='currency' LIMIT 1");
+    if (!q.exec()) {
+        if (error) *error = q.lastError().text();
+        return false;
+    }
+
+    if (!q.next())
+        return true;
+
+    const QString value = q.value(0).toString().trimmed().toUpper();
+    if (value == QStringLiteral("EUR")) {
+        m_currency = AppCurrency::Currency::Euro;
+    } else if (value == QStringLiteral("USD")) {
+        m_currency = AppCurrency::Currency::UsDollar;
+    } else {
+        if (error) {
+            *error = QStringLiteral("Unsupported database currency: %1").arg(value);
+        }
+        return false;
+    }
+
+    m_hasStoredCurrency = true;
+    return true;
+}
+
+bool Database::setCurrency(AppCurrency::Currency currency, QString *error) {
+    // La valuta è una proprietà immutabile del database: una volta salvata
+    // può soltanto essere riletta, mai sostituita con un'altra valuta.
+    if (m_hasStoredCurrency) {
+        if (m_currency == currency)
+            return true;
+        if (error)
+            *error = QStringLiteral("Database currency is already configured as %1.")
+                         .arg(AppCurrency::code(m_currency));
+        return false;
+    }
+
+    QSqlQuery q(m_db);
+    q.prepare("INSERT INTO app_metadata(key, value) VALUES('currency', ?)");
+    q.addBindValue(AppCurrency::code(currency));
+    if (!q.exec()) {
+        if (error) *error = q.lastError().text();
+        return false;
+    }
+
+    m_currency = currency;
+    m_hasStoredCurrency = true;
     return true;
 }
 

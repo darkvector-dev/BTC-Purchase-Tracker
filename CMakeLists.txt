@@ -11,8 +11,12 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Sql)
 
 add_executable(btc-purchase-tracker
     src/main.cpp
+    src/diagnosticlog.cpp
+    src/diagnosticlog.h
     src/mainwindow.cpp
     src/mainwindow.h
+    src/language.h
+    src/currency.h
     src/purchasedialog.cpp
     src/purchasedialog.h
     src/database.cpp

@@ -9,6 +9,8 @@
 #include <QDate>
 #include <QDateTime>
 #include <QDesktopServices>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
@@ -655,6 +657,9 @@ void MainWindow::buildUi() {
     dbMenu->addAction("Mostra percorso", this, &MainWindow::showDatabasePath);
     dbMenu->addAction("Cambia cartella…", this, &MainWindow::changeDatabaseFolder);
 
+    auto *infoMenu = menuBar()->addMenu("Info");
+    infoMenu->addAction("BTC Purchase Tracker", this, &MainWindow::showAbout);
+
     connect(add, &QPushButton::clicked, this, &MainWindow::addPurchase);
     connect(edit, &QPushButton::clicked, this, &MainWindow::editPurchase);
     connect(del, &QPushButton::clicked, this, &MainWindow::deletePurchase);
@@ -668,6 +673,80 @@ void MainWindow::buildUi() {
     });
 
     connect(m_table, &QTableWidget::cellDoubleClicked, this, [this](int, int){ editPurchase(); });
+}
+
+void MainWindow::showAbout() {
+    QDialog dialog(this);
+    dialog.setWindowTitle("BTC Purchase Tracker");
+    dialog.setModal(true);
+    dialog.setMinimumWidth(500);
+
+    auto *layout = new QVBoxLayout(&dialog);
+    layout->setContentsMargins(26, 24, 26, 20);
+    layout->setSpacing(14);
+
+    auto *title = new QLabel("₿  BTC Purchase Tracker", &dialog);
+    QFont titleFont = title->font();
+    titleFont.setPointSize(titleFont.pointSize() + 5);
+    titleFont.setBold(true);
+    title->setFont(titleFont);
+    title->setAlignment(Qt::AlignCenter);
+
+    auto *version = new QLabel("Versione 1.0.0", &dialog);
+    version->setAlignment(Qt::AlignCenter);
+
+    auto *description = new QLabel(
+        "Un semplice tracker offline per registrare gli acquisti Bitcoin nel tempo.<br>"
+        "Nessun account, nessun cloud, nessun collegamento al wallet.<br>"
+        "I tuoi dati restano sul tuo computer.",
+        &dialog
+    );
+    description->setTextFormat(Qt::RichText);
+    description->setWordWrap(true);
+    description->setAlignment(Qt::AlignCenter);
+
+    auto *thanks = new QLabel(
+        "Grazie per aver scaricato e utilizzato BTC Purchase Tracker.",
+        &dialog
+    );
+    thanks->setWordWrap(true);
+    thanks->setAlignment(Qt::AlignCenter);
+
+    auto *contact = new QLabel(
+        "Contatto: "
+        "<a href=\"mailto:irql_not_less_or_equal@protonmail.com\">"
+        "irql_not_less_or_equal@protonmail.com"
+        "</a>",
+        &dialog
+    );
+    contact->setTextFormat(Qt::RichText);
+    contact->setTextInteractionFlags(Qt::TextBrowserInteraction);
+    contact->setOpenExternalLinks(true);
+    contact->setAlignment(Qt::AlignCenter);
+
+    auto *disclaimer = new QLabel(
+        "BTC Purchase Tracker non è un wallet e non fornisce consulenza finanziaria.",
+        &dialog
+    );
+    disclaimer->setWordWrap(true);
+    disclaimer->setAlignment(Qt::AlignCenter);
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    layout->addWidget(title);
+    layout->addWidget(version);
+    layout->addSpacing(4);
+    layout->addWidget(description);
+    layout->addSpacing(4);
+    layout->addWidget(thanks);
+    layout->addWidget(contact);
+    layout->addSpacing(4);
+    layout->addWidget(disclaimer);
+    layout->addSpacing(4);
+    layout->addWidget(buttons);
+
+    dialog.exec();
 }
 
 void MainWindow::refresh() {

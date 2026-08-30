@@ -27,6 +27,7 @@ private slots:
     void backupDatabase();
     void showDatabasePath();
     void changeDatabaseFolder();
+    void showAbout();
 
 private:
     bool initializeDatabase();

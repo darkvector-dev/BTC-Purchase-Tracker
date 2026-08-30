@@ -23,6 +23,10 @@
 #include <QPdfWriter>
 #include <QPageLayout>
 #include <QPageSize>
+#include <QPaintEvent>
+#include <QPainter>
+#include <QPainterPath>
+#include <QPen>
 #include <QPushButton>
 #include <QSaveFile>
 #include <QSet>
@@ -37,8 +41,207 @@
 #include <QStringConverter>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QVector>
 
 #include <algorithm>
+
+
+class PurchasePriceChart : public QWidget {
+public:
+    explicit PurchasePriceChart(QWidget *parent = nullptr)
+        : QWidget(parent) {
+        setMinimumHeight(190);
+        setMaximumHeight(230);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    }
+
+    void setData(QVector<QPair<QDate, double>> points, double averagePrice) {
+        std::sort(points.begin(), points.end(),
+                  [](const auto &a, const auto &b) {
+                      return a.first < b.first;
+                  });
+        m_points = std::move(points);
+        m_averagePrice = averagePrice;
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override {
+        Q_UNUSED(event);
+
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+
+        const QColor textColor = palette().color(QPalette::Text);
+        const QColor mutedColor = palette().color(QPalette::PlaceholderText);
+        const QColor gridColor = palette().color(QPalette::Mid);
+        const QColor lineColor = palette().color(QPalette::Highlight);
+        const QColor backgroundColor = palette().color(QPalette::Base);
+
+        QRectF card = rect().adjusted(1, 1, -1, -1);
+        painter.setPen(QPen(gridColor, 1));
+        painter.setBrush(backgroundColor);
+        painter.drawRoundedRect(card, 8, 8);
+
+        if (m_points.isEmpty()) {
+            painter.setPen(mutedColor);
+            painter.drawText(
+                card.adjusted(20, 20, -20, -20),
+                Qt::AlignCenter,
+                "Nessun acquisto da visualizzare"
+            );
+            return;
+        }
+
+        const QRectF plot = card.adjusted(72, 18, -20, -38);
+        if (plot.width() <= 1 || plot.height() <= 1)
+            return;
+
+        double minPrice = m_points.first().second;
+        double maxPrice = m_points.first().second;
+
+        for (const auto &point : m_points) {
+            minPrice = qMin(minPrice, point.second);
+            maxPrice = qMax(maxPrice, point.second);
+        }
+
+        if (m_averagePrice > 0.0) {
+            minPrice = qMin(minPrice, m_averagePrice);
+            maxPrice = qMax(maxPrice, m_averagePrice);
+        }
+
+        if (qFuzzyCompare(minPrice + 1.0, maxPrice + 1.0)) {
+            const double pad = qMax(100.0, minPrice * 0.05);
+            minPrice -= pad;
+            maxPrice += pad;
+        } else {
+            const double pad = (maxPrice - minPrice) * 0.10;
+            minPrice = qMax(0.0, minPrice - pad);
+            maxPrice += pad;
+        }
+
+        QLocale it(QLocale::Italian, QLocale::Italy);
+
+        // Griglia e scala prezzi.
+        painter.setFont(QFont(painter.font().family(), qMax(8, painter.font().pointSize() - 1)));
+        for (int i = 0; i <= 4; ++i) {
+            const double ratio = static_cast<double>(i) / 4.0;
+            const double y = plot.bottom() - ratio * plot.height();
+            const double price = minPrice + ratio * (maxPrice - minPrice);
+
+            QColor grid = gridColor;
+            grid.setAlpha(90);
+            painter.setPen(QPen(grid, 1));
+            painter.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y));
+
+            painter.setPen(mutedColor);
+            const QString label = it.toString(price, 'f', 0) + " €";
+            painter.drawText(
+                QRectF(card.left() + 6, y - 9, 60, 18),
+                Qt::AlignRight | Qt::AlignVCenter,
+                label
+            );
+        }
+
+        const qint64 firstDay = m_points.first().first.toJulianDay();
+        const qint64 lastDay = m_points.last().first.toJulianDay();
+        const bool sameDay = firstDay == lastDay;
+
+        auto xForIndex = [&](int index) -> double {
+            if (m_points.size() == 1)
+                return plot.center().x();
+
+            if (sameDay) {
+                return plot.left()
+                    + (static_cast<double>(index) / (m_points.size() - 1))
+                    * plot.width();
+            }
+
+            const qint64 day = m_points[index].first.toJulianDay();
+            return plot.left()
+                + (static_cast<double>(day - firstDay)
+                   / static_cast<double>(lastDay - firstDay))
+                * plot.width();
+        };
+
+        auto yForPrice = [&](double price) -> double {
+            return plot.bottom()
+                - ((price - minPrice) / (maxPrice - minPrice))
+                * plot.height();
+        };
+
+        // Linea del prezzo medio.
+        if (m_averagePrice > 0.0) {
+            const double avgY = yForPrice(m_averagePrice);
+            QColor avgColor = lineColor;
+            avgColor.setAlpha(150);
+
+            QPen avgPen(avgColor, 1.5, Qt::DashLine);
+            painter.setPen(avgPen);
+            painter.drawLine(QPointF(plot.left(), avgY), QPointF(plot.right(), avgY));
+
+            painter.setPen(textColor);
+            painter.drawText(
+                QRectF(plot.left() + 6, avgY - 20, plot.width() - 12, 18),
+                Qt::AlignRight | Qt::AlignVCenter,
+                "Media " + it.toString(m_averagePrice, 'f', 0) + " €/BTC"
+            );
+        }
+
+        // Curva cronologica degli acquisti.
+        QPainterPath path;
+        for (int i = 0; i < m_points.size(); ++i) {
+            const QPointF point(xForIndex(i), yForPrice(m_points[i].second));
+            if (i == 0)
+                path.moveTo(point);
+            else
+                path.lineTo(point);
+        }
+
+        painter.setPen(QPen(lineColor, 2.2));
+        if (m_points.size() > 1)
+            painter.drawPath(path);
+
+        painter.setBrush(lineColor);
+        painter.setPen(QPen(backgroundColor, 1.5));
+        for (int i = 0; i < m_points.size(); ++i) {
+            const QPointF point(xForIndex(i), yForPrice(m_points[i].second));
+            painter.drawEllipse(point, 4.0, 4.0);
+        }
+
+        // Date: prima, centrale (se utile), ultima.
+        painter.setPen(mutedColor);
+        const QString firstLabel = m_points.first().first.toString("dd/MM/yy");
+        const QString lastLabel = m_points.last().first.toString("dd/MM/yy");
+
+        painter.drawText(
+            QRectF(plot.left(), plot.bottom() + 8, 90, 20),
+            Qt::AlignLeft | Qt::AlignVCenter,
+            firstLabel
+        );
+
+        if (m_points.size() >= 3) {
+            const int middle = m_points.size() / 2;
+            painter.drawText(
+                QRectF(plot.center().x() - 50, plot.bottom() + 8, 100, 20),
+                Qt::AlignCenter,
+                m_points[middle].first.toString("dd/MM/yy")
+            );
+        }
+
+        if (m_points.size() > 1) {
+            painter.drawText(
+                QRectF(plot.right() - 90, plot.bottom() + 8, 90, 20),
+                Qt::AlignRight | Qt::AlignVCenter,
+                lastLabel
+            );
+        }
+    }
+
+private:
+    QVector<QPair<QDate, double>> m_points;
+    double m_averagePrice{};
+};
 
 namespace {
 constexpr auto kOrg = "BTCPurchaseTracker";
@@ -148,7 +351,7 @@ private:
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     setWindowTitle("BTC Purchase Tracker");
-    resize(1220, 720);
+    resize(1220, 880);
     buildUi();
     if (!initializeDatabase()) {
         QMetaObject::invokeMethod(qApp, &QApplication::quit, Qt::QueuedConnection);
@@ -255,6 +458,22 @@ void MainWindow::buildUi() {
     filterRow->addWidget(m_yearFilter);
     filterRow->addStretch();
     outer->addLayout(filterRow);
+
+    auto *chartBox = new QFrame(this);
+    chartBox->setFrameShape(QFrame::NoFrame);
+    auto *chartLayout = new QVBoxLayout(chartBox);
+    chartLayout->setContentsMargins(0, 0, 0, 0);
+    chartLayout->setSpacing(5);
+
+    auto *chartTitle = new QLabel("ANDAMENTO PREZZO DI ACQUISTO", chartBox);
+    QFont chartTitleFont = chartTitle->font();
+    chartTitleFont.setBold(true);
+    chartTitle->setFont(chartTitleFont);
+
+    m_priceChart = new PurchasePriceChart(chartBox);
+    chartLayout->addWidget(chartTitle);
+    chartLayout->addWidget(m_priceChart);
+    outer->addWidget(chartBox);
 
     m_table = new QTableWidget(this);
     m_table->setColumnCount(6);
@@ -363,30 +582,25 @@ void MainWindow::refresh() {
     for (int r = 0; r < rows.size(); ++r) {
         const auto &p = rows[r];
 
-        auto set = [&](int c, const QString &text,
-                       Qt::Alignment align = Qt::AlignLeft | Qt::AlignVCenter) {
+        auto set = [&](int c, const QString &text) {
             auto *item = new QTableWidgetItem(text);
-            item->setTextAlignment(align);
+            item->setTextAlignment(Qt::AlignCenter);
             item->setData(Qt::UserRole, p.id);
             m_table->setItem(r, c, item);
         };
 
-        auto setSortable = [&](int c, const QString &text, qint64 sortValue,
-                               Qt::Alignment align = Qt::AlignLeft | Qt::AlignVCenter) {
+        auto setSortable = [&](int c, const QString &text, qint64 sortValue) {
             auto *item = new SortableNumberItem(text, sortValue);
-            item->setTextAlignment(align);
+            item->setTextAlignment(Qt::AlignCenter);
             item->setData(Qt::UserRole, p.id);
             m_table->setItem(r, c, item);
         };
 
-        setSortable(0, p.date.toString("dd/MM/yyyy"), p.date.toJulianDay(), Qt::AlignCenter);
+        setSortable(0, p.date.toString("dd/MM/yyyy"), p.date.toJulianDay());
         set(1, p.site);
-        setSortable(2, CsvUtils::formatEuro(p.euroCents), p.euroCents,
-                    Qt::AlignRight | Qt::AlignVCenter);
-        setSortable(3, CsvUtils::satsToBtc(p.sats), p.sats,
-                    Qt::AlignRight | Qt::AlignVCenter);
-        setSortable(4, CsvUtils::formatSats(p.sats), p.sats,
-                    Qt::AlignRight | Qt::AlignVCenter);
+        setSortable(2, CsvUtils::formatEuro(p.euroCents), p.euroCents);
+        setSortable(3, CsvUtils::satsToBtc(p.sats), p.sats);
+        setSortable(4, CsvUtils::formatSats(p.sats), p.sats);
         set(5, p.txid);
 
     }
@@ -404,25 +618,48 @@ void MainWindow::refresh() {
     // Prezzo medio di acquisto: euro investiti / BTC acquistati.
     // È solo un valore di visualizzazione: i dati salvati restano interi
     // (centesimi di euro e satoshi).
+    double averageEurPerBtc = 0.0;
+
     if (sats > 0) {
-        const long double averageEurPerBtc =
+        const long double average =
             static_cast<long double>(euro) * 1000000.0L /
             static_cast<long double>(sats);
 
+        averageEurPerBtc = static_cast<double>(average);
+
         QLocale it(QLocale::Italian, QLocale::Italy);
         m_averagePrice->setText(
-            it.toCurrencyString(static_cast<double>(averageEurPerBtc), "EUR")
+            it.toCurrencyString(averageEurPerBtc, "EUR")
         );
 
         m_averagePrice->setProperty(
             "clipboardValue",
-            QString::number(static_cast<double>(averageEurPerBtc), 'f', 2)
+            QString::number(averageEurPerBtc, 'f', 2)
                 .replace('.', ',')
         );
     } else {
         m_averagePrice->setText("—");
         m_averagePrice->setProperty("clipboardValue", QString());
     }
+
+    QVector<QPair<QDate, double>> chartPoints;
+    chartPoints.reserve(rows.size());
+
+    for (const auto &p : rows) {
+        if (p.sats <= 0 || p.euroCents <= 0)
+            continue;
+
+        const long double purchasePrice =
+            static_cast<long double>(p.euroCents) * 1000000.0L /
+            static_cast<long double>(p.sats);
+
+        chartPoints.append(
+            qMakePair(p.date, static_cast<double>(purchasePrice))
+        );
+    }
+
+    if (m_priceChart)
+        m_priceChart->setData(chartPoints, averageEurPerBtc);
 
     // Valori puliti copiati negli appunti al clic sui totali.
     m_totalEuro->setProperty(

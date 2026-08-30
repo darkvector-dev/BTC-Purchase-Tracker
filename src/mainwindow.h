@@ -6,6 +6,7 @@
 class QLabel;
 class QTableWidget;
 class QComboBox;
+class PurchasePriceChart;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -39,5 +40,6 @@ private:
     QLabel *m_totalSats{};
     QLabel *m_averagePrice{};
     QComboBox *m_yearFilter{};
+    PurchasePriceChart *m_priceChart{};
     QLabel *m_dbPath{};
 };

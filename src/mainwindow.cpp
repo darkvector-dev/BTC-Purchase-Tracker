@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "csvutils.h"
+#include "diagnosticlog.h"
 #include "currency.h"
 #include "language.h"
 #include "purchasedialog.h"
@@ -590,6 +591,7 @@ bool MainWindow::initializeDatabase() {
     if (!folder.isEmpty() && QDir(folder).exists()) {
         const QString rememberedDatabase = QDir(folder).filePath(kDbName);
         if (!QFile::exists(rememberedDatabase)) {
+            DiagnosticLog::info(QStringLiteral("Remembered database is missing; starting first setup"));
             settings.remove(kDbKey);
             settings.sync();
             folder.clear();
@@ -597,6 +599,7 @@ bool MainWindow::initializeDatabase() {
     }
 
     if (folder.isEmpty() || !QDir(folder).exists()) {
+        DiagnosticLog::info(QStringLiteral("First setup started"));
         // Anche la scelta della cartella precede la selezione della lingua:
         // il messaggio deve quindi essere comprensibile in entrambe le lingue.
         QMessageBox::information(
@@ -612,7 +615,11 @@ bool MainWindow::initializeDatabase() {
         folder = chooseDatabaseFolder(
             QStringLiteral("Scegli la cartella del database / Choose the database folder")
         );
-        if (folder.isEmpty()) return false;
+        if (folder.isEmpty()) {
+            DiagnosticLog::info(QStringLiteral("First setup cancelled while choosing database folder"));
+            return false;
+        }
+        DiagnosticLog::info(QStringLiteral("Database folder selected"));
     }
     return openDatabaseAt(folder, true);
 }
@@ -620,6 +627,7 @@ bool MainWindow::initializeDatabase() {
 bool MainWindow::openDatabaseAt(const QString &folder, bool remember) {
     QDir dir(folder);
     if (!dir.exists() && !dir.mkpath(".")) {
+        DiagnosticLog::error(QStringLiteral("Unable to create or access database folder"));
         QMessageBox::critical(
             this,
             L("Errore", "Error"),
@@ -635,11 +643,18 @@ bool MainWindow::openDatabaseAt(const QString &folder, bool remember) {
     const bool databaseExisted = QFile::exists(path);
 
     AppCurrency::Currency newDatabaseCurrency = AppCurrency::Currency::Euro;
-    if (!databaseExisted && !chooseInitialCurrency(&newDatabaseCurrency))
+    if (!databaseExisted && !chooseInitialCurrency(&newDatabaseCurrency)) {
+        DiagnosticLog::info(QStringLiteral("First setup cancelled while choosing currency"));
         return false;
+    }
+
+    DiagnosticLog::info(databaseExisted
+        ? QStringLiteral("Opening existing database")
+        : QStringLiteral("Creating new database"));
 
     QString error;
     if (!m_db.open(path, &error)) {
+        DiagnosticLog::error(QStringLiteral("Database open failed: %1").arg(error));
         QMessageBox::critical(this, L("Errore database", "Database error"), error);
         return false;
     }
@@ -652,6 +667,7 @@ bool MainWindow::openDatabaseAt(const QString &folder, bool remember) {
             : newDatabaseCurrency;
 
         if (!m_db.setCurrency(currency, &error)) {
+            DiagnosticLog::error(QStringLiteral("Database currency configuration failed: %1").arg(error));
             QMessageBox::critical(this, L("Errore database", "Database error"), error);
             m_db.close();
 
@@ -663,7 +679,14 @@ bool MainWindow::openDatabaseAt(const QString &folder, bool remember) {
 
             return false;
         }
+
+        DiagnosticLog::info(databaseExisted
+            ? QStringLiteral("Legacy database marked as EUR")
+            : QStringLiteral("New database currency configured: %1").arg(AppCurrency::code(currency)));
     }
+
+    DiagnosticLog::info(QStringLiteral("Database opened successfully | currency=%1")
+        .arg(AppCurrency::code(m_db.currency())));
 
     if (remember) {
         QSettings settings(kOrg, kApp);
@@ -676,6 +699,7 @@ bool MainWindow::openDatabaseAt(const QString &folder, bool remember) {
 
     QString csvError;
     if (!writeAutomaticCsvBackup(m_db, &csvError)) {
+        DiagnosticLog::warning(QStringLiteral("Automatic CSV backup failed after database open: %1").arg(csvError));
         QMessageBox::warning(
             this,
             L("Backup CSV automatico", "Automatic CSV backup"),
@@ -814,6 +838,8 @@ void MainWindow::buildUi() {
     languageGroup->addAction(m_englishAction);
 
     m_infoMenu = menuBar()->addMenu(QString());
+    m_exportLogAction = m_infoMenu->addAction(QString(), this, &MainWindow::exportDiagnosticLog);
+    m_infoMenu->addSeparator();
     m_supportAction = m_infoMenu->addAction(QString(), this, &MainWindow::showSupport);
     m_infoMenu->addSeparator();
     m_aboutAction = m_infoMenu->addAction("BTC Purchase Tracker", this, &MainWindow::showAbout);
@@ -901,6 +927,7 @@ void MainWindow::applyLanguage() {
     m_resetAction->setText(L("Ripristina applicazione…", "Reset application…"));
 
     m_infoMenu->setTitle("Info");
+    m_exportLogAction->setText(L("Esporta log diagnostico…", "Export diagnostic log…"));
     m_supportAction->setText(L("Supporta il progetto", "Support the project"));
     m_aboutAction->setText("BTC Purchase Tracker");
 
@@ -919,6 +946,9 @@ void MainWindow::changeLanguage(bool english) {
     }
 
     AppLanguage::setCurrent(language);
+    DiagnosticLog::info(english
+        ? QStringLiteral("Interface language changed: EN")
+        : QStringLiteral("Interface language changed: IT"));
     applyLanguage();
     refresh();
 }
@@ -934,10 +964,12 @@ void MainWindow::resetApplication() {
     first.setInformativeText(L(
         "Il database corrente e il CSV automatico verranno eliminati definitivamente. "
         "Saranno cancellate anche tutte le impostazioni dell'applicazione.\n\n"
-        "I backup manuali e i file CSV/PDF esportati NON verranno eliminati.",
+        "I backup manuali e i file CSV/PDF esportati NON verranno eliminati. "
+        "Il log diagnostico tecnico verrà conservato.",
         "The current database and automatic CSV will be permanently deleted. "
         "All application settings will also be cleared.\n\n"
-        "Manual backups and exported CSV/PDF files will NOT be deleted."
+        "Manual backups and exported CSV/PDF files will NOT be deleted. "
+        "The technical diagnostic log will be kept."
     ));
     auto *continueButton = first.addButton(
         L("Continua", "Continue"), QMessageBox::DestructiveRole
@@ -966,6 +998,8 @@ void MainWindow::resetApplication() {
     if (second.clickedButton() != deleteButton)
         return;
 
+    DiagnosticLog::warning(QStringLiteral("Application reset confirmed"));
+
     const QString databasePath = m_db.filePath();
     const QString automaticCsvPath = databasePath.isEmpty()
         ? QString()
@@ -976,6 +1010,7 @@ void MainWindow::resetApplication() {
     m_db.close();
 
     if (!databasePath.isEmpty() && QFile::exists(databasePath) && !QFile::remove(databasePath)) {
+        DiagnosticLog::error(QStringLiteral("Application reset failed: database file could not be removed"));
         QMessageBox::critical(
             this,
             L("Ripristino non riuscito", "Reset failed"),
@@ -987,6 +1022,7 @@ void MainWindow::resetApplication() {
         // Proviamo a riaprire il database per lasciare l'app in uno stato usabile.
         QString reopenError;
         if (!m_db.open(databasePath, &reopenError)) {
+            DiagnosticLog::error(QStringLiteral("Database reopen after failed reset also failed: %1").arg(reopenError));
             QMessageBox::critical(
                 this,
                 L("Errore database", "Database error"),
@@ -1007,6 +1043,8 @@ void MainWindow::resetApplication() {
     settings.clear();
     settings.sync();
 
+    DiagnosticLog::info(QStringLiteral("Application reset completed; diagnostic log retained"));
+
     QMessageBox::information(
         this,
         L("Ripristino completato", "Reset complete"),
@@ -1019,6 +1057,45 @@ void MainWindow::resetApplication() {
     );
 
     QMetaObject::invokeMethod(qApp, &QApplication::quit, Qt::QueuedConnection);
+}
+
+void MainWindow::exportDiagnosticLog() {
+    DiagnosticLog::info(QStringLiteral("Diagnostic log export requested"));
+
+    QString path = QFileDialog::getSaveFileName(
+        this,
+        L("Esporta log diagnostico", "Export diagnostic log"),
+        QStringLiteral("btc-purchase-tracker-diagnostic.log"),
+        L("File log (*.log);;Tutti i file (*)", "Log files (*.log);;All files (*)")
+    );
+    if (path.isEmpty()) {
+        DiagnosticLog::info(QStringLiteral("Diagnostic log export cancelled"));
+        return;
+    }
+    if (!path.endsWith(QStringLiteral(".log"), Qt::CaseInsensitive))
+        path += QStringLiteral(".log");
+
+    QString error;
+    if (!DiagnosticLog::exportSnapshot(path, &error)) {
+        DiagnosticLog::error(QStringLiteral("Diagnostic log export failed: %1").arg(error));
+        QMessageBox::critical(
+            this,
+            L("Errore", "Error"),
+            L("Impossibile esportare il log diagnostico:\n\n", "Unable to export the diagnostic log:\n\n") + error
+        );
+        return;
+    }
+
+    QMessageBox::information(
+        this,
+        L("Log diagnostico esportato", "Diagnostic log exported"),
+        L(
+            "Log salvato correttamente.\n\n"
+            "Contiene solo eventi tecnici dell'applicazione e non include importi, BTC/sats, note, TX/ID o la BOLT12 Offer.",
+            "Log saved successfully.\n\n"
+            "It contains only technical application events and does not include amounts, BTC/sats, notes, TX/IDs or the BOLT12 Offer."
+        )
+    );
 }
 
 void MainWindow::showSupport() {
@@ -1192,6 +1269,7 @@ void MainWindow::refresh() {
     QString error;
     const auto allRows = m_db.purchases(&error);
     if (!error.isEmpty()) {
+        DiagnosticLog::error(QStringLiteral("Database refresh failed: %1").arg(error));
         QMessageBox::critical(this, L("Errore database", "Database error"), error);
         return;
     }
@@ -1364,12 +1442,15 @@ void MainWindow::addPurchase() {
     }
     QString error;
     if (!m_db.addPurchase(p, &error)) {
+        DiagnosticLog::error(QStringLiteral("Add purchase failed: %1").arg(error));
         QMessageBox::critical(this, L("Errore", "Error"), error);
         return;
     }
+    DiagnosticLog::info(QStringLiteral("Purchase added"));
 
     QString csvError;
     if (!writeAutomaticCsvBackup(m_db, &csvError)) {
+        DiagnosticLog::warning(QStringLiteral("Automatic CSV backup failed after add: %1").arg(csvError));
         QMessageBox::warning(
             this,
             L("Backup CSV automatico", "Automatic CSV backup"),
@@ -1410,12 +1491,15 @@ void MainWindow::editPurchase() {
 
     QString error;
     if (!m_db.updatePurchase(updated, &error)) {
+        DiagnosticLog::error(QStringLiteral("Edit purchase failed: %1").arg(error));
         QMessageBox::critical(this, L("Errore", "Error"), error);
         return;
     }
+    DiagnosticLog::info(QStringLiteral("Purchase edited"));
 
     QString csvError;
     if (!writeAutomaticCsvBackup(m_db, &csvError)) {
+        DiagnosticLog::warning(QStringLiteral("Automatic CSV backup failed after edit: %1").arg(csvError));
         QMessageBox::warning(
             this,
             L("Backup CSV automatico", "Automatic CSV backup"),
@@ -1451,12 +1535,15 @@ void MainWindow::deletePurchase() {
 
     QString error;
     if (!m_db.deletePurchase(p.id, &error)) {
+        DiagnosticLog::error(QStringLiteral("Delete purchase failed: %1").arg(error));
         QMessageBox::critical(this, L("Errore", "Error"), error);
         return;
     }
+    DiagnosticLog::info(QStringLiteral("Purchase deleted"));
 
     QString csvError;
     if (!writeAutomaticCsvBackup(m_db, &csvError)) {
+        DiagnosticLog::warning(QStringLiteral("Automatic CSV backup failed after delete: %1").arg(csvError));
         QMessageBox::warning(
             this,
             L("Backup CSV automatico", "Automatic CSV backup"),
@@ -1479,8 +1566,11 @@ void MainWindow::importCsv() {
     );
     if (path.isEmpty()) return;
 
+    DiagnosticLog::info(QStringLiteral("CSV import started"));
     const auto result = CsvUtils::importFile(path, m_db);
     if (result.validRows.isEmpty()) {
+        DiagnosticLog::warning(QStringLiteral("CSV import found no valid rows | duplicates=%1 | errors=%2")
+            .arg(result.duplicateRows).arg(result.errors.size()));
         QString msg = L("Nessuna riga valida da importare.", "No valid rows to import.");
         if (!result.errors.isEmpty()) msg += "\n\n" + result.errors.mid(0,10).join("\n");
         QMessageBox::warning(this, L("Importazione CSV", "CSV import"), msg);
@@ -1506,12 +1596,16 @@ void MainWindow::importCsv() {
 
     QString error;
     if (!m_db.addPurchasesTransaction(result.validRows, &error)) {
+        DiagnosticLog::error(QStringLiteral("CSV import database transaction failed: %1").arg(error));
         QMessageBox::critical(this, L("Errore importazione", "Import error"), error);
         return;
     }
+    DiagnosticLog::info(QStringLiteral("CSV import completed | rows=%1 | duplicates=%2 | parse_errors=%3")
+        .arg(result.validRows.size()).arg(result.duplicateRows).arg(result.errors.size()));
 
     QString csvError;
     if (!writeAutomaticCsvBackup(m_db, &csvError)) {
+        DiagnosticLog::warning(QStringLiteral("Automatic CSV backup failed after import: %1").arg(csvError));
         QMessageBox::warning(
             this,
             L("Backup CSV automatico", "Automatic CSV backup"),
@@ -1557,6 +1651,7 @@ void MainWindow::exportCsv() {
 
     QSaveFile f(path.endsWith(".csv", Qt::CaseInsensitive) ? path : path + ".csv");
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        DiagnosticLog::error(QStringLiteral("CSV export could not open destination: %1").arg(f.errorString()));
         QMessageBox::critical(this, L("Errore", "Error"), f.errorString());
         return;
     }
@@ -1600,10 +1695,12 @@ void MainWindow::exportCsv() {
         << sats << d << "\n";
 
     if (!f.commit()) {
+        DiagnosticLog::error(QStringLiteral("CSV export commit failed: %1").arg(f.errorString()));
         QMessageBox::critical(this, L("Errore", "Error"), f.errorString());
         return;
     }
 
+    DiagnosticLog::info(QStringLiteral("CSV export completed"));
     QMessageBox::information(
         this,
         L("Esportazione completata", "Export complete"),
@@ -1698,6 +1795,7 @@ void MainWindow::exportPdf() {
     doc.setHtml(html);
     doc.print(&writer);
 
+    DiagnosticLog::info(QStringLiteral("PDF export completed"));
     QMessageBox::information(
         this,
         L("Esportazione completata", "Export complete"),
@@ -1715,6 +1813,7 @@ void MainWindow::backupDatabase() {
     if (path.isEmpty()) return;
 
     if (QFile::exists(path) && !QFile::remove(path)) {
+        DiagnosticLog::error(QStringLiteral("Database backup failed: destination could not be overwritten"));
         QMessageBox::critical(
             this,
             L("Errore", "Error"),
@@ -1727,6 +1826,7 @@ void MainWindow::backupDatabase() {
     }
 
     if (!QFile::copy(m_db.filePath(), path)) {
+        DiagnosticLog::error(QStringLiteral("Database backup failed: copy operation failed"));
         QMessageBox::critical(
             this,
             L("Errore", "Error"),
@@ -1735,6 +1835,7 @@ void MainWindow::backupDatabase() {
         return;
     }
 
+    DiagnosticLog::info(QStringLiteral("Database backup completed"));
     QMessageBox::information(
         this,
         L("Backup completato", "Backup complete"),
@@ -1762,6 +1863,7 @@ void MainWindow::changeDatabaseFolder() {
     if (QFileInfo(newPath).absoluteFilePath() == QFileInfo(oldPath).absoluteFilePath()) return;
 
     if (QFile::exists(newPath)) {
+        DiagnosticLog::warning(QStringLiteral("Database move cancelled: destination database already exists"));
         QMessageBox::warning(
             this,
             L("File già presente", "File already exists"),
@@ -1775,6 +1877,7 @@ void MainWindow::changeDatabaseFolder() {
 
     m_db.close();
     if (!QFile::copy(oldPath, newPath)) {
+        DiagnosticLog::error(QStringLiteral("Database move failed: copy operation failed"));
         QString error;
         m_db.open(oldPath, &error);
         QMessageBox::critical(
@@ -1795,6 +1898,7 @@ void MainWindow::changeDatabaseFolder() {
     }
 
     refresh();
+    DiagnosticLog::info(QStringLiteral("Database moved to a new folder; original retained as safety copy"));
     QMessageBox::information(
         this,
         L("Database spostato", "Database moved"),

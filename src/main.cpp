@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "diagnosticlog.h"
 #include "language.h"
 
 #include <QApplication>
@@ -12,6 +13,14 @@ int main(int argc, char *argv[]) {
     QApplication::setApplicationVersion("1.0.0");
 
     AppLanguage::load();
+    DiagnosticLog::initialize();
+    DiagnosticLog::info(AppLanguage::isEnglish()
+        ? QStringLiteral("Interface language loaded: EN")
+        : QStringLiteral("Interface language loaded: IT"));
+
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, [] {
+        DiagnosticLog::info(QStringLiteral("Application closing"));
+    });
 
     // L'icona è incorporata nell'eseguibile tramite Qt Resource System,
     // quindi funziona anche dentro l'AppImage e indipendentemente

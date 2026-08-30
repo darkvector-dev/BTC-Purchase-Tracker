@@ -7,11 +7,15 @@ class QLabel;
 class QTableWidget;
 class QComboBox;
 class PurchasePriceChart;
+class QCloseEvent;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
     explicit MainWindow(QWidget *parent = nullptr);
+
+protected:
+    void closeEvent(QCloseEvent *event) override;
 
 private slots:
     void addPurchase();
@@ -29,6 +33,8 @@ private:
     bool openDatabaseAt(const QString &folder, bool remember = true);
     void buildUi();
     void refresh();
+    void restoreUiState();
+    void saveUiState() const;
     qint64 selectedId() const;
     Purchase selectedPurchase() const;
     QString chooseDatabaseFolder(const QString &title, const QString &initial = QString());

@@ -4,6 +4,7 @@
 
 #include <QApplication>
 #include <QClipboard>
+#include <QCloseEvent>
 #include <QComboBox>
 #include <QDate>
 #include <QDateTime>
@@ -340,6 +341,8 @@ namespace {
 constexpr auto kOrg = "BTCPurchaseTracker";
 constexpr auto kApp = "BTCPurchaseTracker";
 constexpr auto kDbKey = "databaseFolder";
+constexpr auto kWindowGeometryKey = "ui/windowGeometry";
+constexpr auto kTableHeaderStateKey = "ui/tableHeaderState";
 constexpr auto kDbName = "btc-purchase-tracker.sqlite";
 constexpr auto kAutoCsvName = "btc_purchase_tracker_autobackup.csv";
 
@@ -446,11 +449,50 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     setWindowTitle("BTC Purchase Tracker");
     resize(1220, 880);
     buildUi();
+    restoreUiState();
+
     if (!initializeDatabase()) {
         QMetaObject::invokeMethod(qApp, &QApplication::quit, Qt::QueuedConnection);
         return;
     }
+
     refresh();
+}
+
+void MainWindow::restoreUiState() {
+    QSettings settings(kOrg, kApp);
+
+    const QByteArray geometry =
+        settings.value(kWindowGeometryKey).toByteArray();
+    if (!geometry.isEmpty())
+        restoreGeometry(geometry);
+
+    if (m_table) {
+        const QByteArray headerState =
+            settings.value(kTableHeaderStateKey).toByteArray();
+
+        if (!headerState.isEmpty())
+            m_table->horizontalHeader()->restoreState(headerState);
+    }
+}
+
+void MainWindow::saveUiState() const {
+    QSettings settings(kOrg, kApp);
+    settings.setValue(kWindowGeometryKey, saveGeometry());
+
+    if (m_table) {
+        settings.setValue(
+            kTableHeaderStateKey,
+            m_table->horizontalHeader()->saveState()
+        );
+    }
+
+    settings.sync();
+}
+
+void MainWindow::closeEvent(QCloseEvent *event) {
+    saveUiState();
+    QMainWindow::closeEvent(event);
 }
 
 QString MainWindow::chooseDatabaseFolder(const QString &title, const QString &initial) {
@@ -578,8 +620,17 @@ void MainWindow::buildUi() {
     m_table->setSortingEnabled(true);
     m_table->verticalHeader()->setVisible(false);
     m_table->horizontalHeader()->setStretchLastSection(true);
-    m_table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Interactive);
+    m_table->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+
+    // Larghezze iniziali usate solo finché l'utente non le personalizza.
+    // Dal secondo avvio vengono ripristinate esattamente quelle salvate.
+    m_table->setColumnWidth(0, 110);
     m_table->setColumnWidth(1, 180);
+    m_table->setColumnWidth(2, 120);
+    m_table->setColumnWidth(3, 150);
+    m_table->setColumnWidth(4, 140);
+    m_table->setColumnWidth(5, 300);
+
     outer->addWidget(m_table, 1);
 
     auto *actions = new QHBoxLayout;
@@ -700,10 +751,6 @@ void MainWindow::refresh() {
     }
 
     m_table->setSortingEnabled(true);
-    m_table->resizeColumnToContents(0);
-    m_table->resizeColumnToContents(2);
-    m_table->resizeColumnToContents(3);
-    m_table->resizeColumnToContents(4);
 
     m_totalEuro->setText(CsvUtils::formatEuro(euro));
     m_totalBtc->setText(CsvUtils::satsToBtc(sats) + " BTC");

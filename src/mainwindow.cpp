@@ -537,26 +537,28 @@ QString MainWindow::chooseDatabaseFolder(const QString &title, const QString &in
 bool MainWindow::chooseInitialCurrency(AppCurrency::Currency *currency) {
     if (!currency) return false;
 
+    // La valuta viene scelta prima che l'utente abbia potuto impostare la lingua
+    // dell'interfaccia. Per questo il primo avvio è sempre bilingue IT/EN.
     QMessageBox box(this);
     box.setIcon(QMessageBox::Question);
-    box.setWindowTitle(L("Valuta del database", "Database currency"));
-    box.setText(L(
-        "Scegli la valuta da usare per questo database.",
+    box.setWindowTitle(QStringLiteral("Valuta del database / Database currency"));
+    box.setText(QStringLiteral(
+        "Scegli la valuta da usare per questo database.\n"
         "Choose the currency to use for this database."
     ));
-    box.setInformativeText(L(
+    box.setInformativeText(QStringLiteral(
         "La scelta sarà permanente per questo database e non potrà essere modificata in seguito. "
-        "Non verrà effettuata alcuna conversione tra euro e dollari.",
+        "Non verrà effettuata alcuna conversione tra euro e dollari.\n\n"
         "This choice is permanent for this database and cannot be changed later. "
         "No conversion between euros and US dollars will be performed."
     ));
 
     auto *euroButton = box.addButton(QString::fromUtf8("Euro (€)"), QMessageBox::AcceptRole);
     auto *usdButton = box.addButton(
-        L("Dollaro USA ($)", "US Dollar ($)"),
+        QStringLiteral("Dollaro USA ($) / US Dollar ($)"),
         QMessageBox::AcceptRole
     );
-    auto *cancelButton = box.addButton(QMessageBox::Cancel);
+    auto *cancelButton = box.addButton(QStringLiteral("Annulla / Cancel"), QMessageBox::RejectRole);
 
     // La scelta è permanente: Enter/Esc non devono selezionare per errore
     // una valuta. Il default sicuro è annullare.
@@ -594,18 +596,20 @@ bool MainWindow::initializeDatabase() {
     }
 
     if (folder.isEmpty() || !QDir(folder).exists()) {
+        // Anche la scelta della cartella precede la selezione della lingua:
+        // il messaggio deve quindi essere comprensibile in entrambe le lingue.
         QMessageBox::information(
             this,
-            L("Prima configurazione", "First setup"),
-            L(
+            QStringLiteral("Prima configurazione / First setup"),
+            QStringLiteral(
                 "Scegli la cartella in cui vuoi conservare il database degli acquisti.\n\n"
-                "Il file rimarrà in quella posizione anche aggiornando o spostando l'applicazione.",
+                "Il file rimarrà in quella posizione anche aggiornando o spostando l'applicazione.\n\n"
                 "Choose the folder where you want to store the purchase database.\n\n"
                 "The file will remain in that location even if you update or move the application."
             )
         );
         folder = chooseDatabaseFolder(
-            L("Scegli la cartella del database", "Choose the database folder")
+            QStringLiteral("Scegli la cartella del database / Choose the database folder")
         );
         if (folder.isEmpty()) return false;
     }

@@ -1,5 +1,6 @@
 #include "purchasedialog.h"
 #include "csvutils.h"
+#include "language.h"
 
 #include <QDateEdit>
 #include <QDialogButtonBox>
@@ -10,8 +11,16 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
+namespace {
+QString L(const char *italian, const char *english) {
+    return AppLanguage::text(italian, english);
+}
+}
+
 PurchaseDialog::PurchaseDialog(QWidget *parent, const Purchase *initial) : QDialog(parent) {
-    setWindowTitle(initial ? "Modifica acquisto" : "Nuovo acquisto");
+    setWindowTitle(initial
+        ? L("Modifica acquisto", "Edit purchase")
+        : L("Nuovo acquisto", "New purchase"));
     setMinimumWidth(520);
 
     m_date = new QDateEdit(QDate::currentDate(), this);
@@ -19,11 +28,11 @@ PurchaseDialog::PurchaseDialog(QWidget *parent, const Purchase *initial) : QDial
     m_date->setDisplayFormat("dd/MM/yyyy");
     m_site = new QLineEdit(this);
     m_euro = new QLineEdit(this);
-    m_euro->setPlaceholderText("es. 250,00");
+    m_euro->setPlaceholderText(L("es. 250,00", "e.g. 250.00"));
     m_btc = new QLineEdit(this);
-    m_btc->setPlaceholderText("es. 0,00234567");
+    m_btc->setPlaceholderText(L("es. 0,00234567", "e.g. 0.00234567"));
     m_sats = new QLineEdit(this);
-    m_sats->setPlaceholderText("es. 78489,696901");
+    m_sats->setPlaceholderText(L("es. 78489,696901", "e.g. 78489.696901"));
     m_txid = new QLineEdit(this);
 
     if (initial) {
@@ -37,19 +46,25 @@ PurchaseDialog::PurchaseDialog(QWidget *parent, const Purchase *initial) : QDial
     }
 
     auto *form = new QFormLayout;
-    form->addRow("Data", m_date);
-    form->addRow("Sito / exchange", m_site);
-    form->addRow("Euro spesi", m_euro);
+    form->addRow(L("Data", "Date"), m_date);
+    form->addRow(L("Sito / exchange", "Site / exchange"), m_site);
+    form->addRow(L("Euro spesi", "Euro spent"), m_euro);
     form->addRow("BTC on-chain", m_btc);
     form->addRow("Satoshi", m_sats);
-    form->addRow("TX / ID transazione", m_txid);
+    form->addRow(L("TX / ID transazione", "TX / Transaction ID"), m_txid);
 
-    auto *note = new QLabel("BTC e satoshi sono sincronizzati. Puoi incollare anche sats frazionari: vengono arrotondati al satoshi intero più vicino per il valore on-chain.", this);
+    auto *note = new QLabel(
+        L(
+            "BTC e satoshi sono sincronizzati. Puoi incollare anche sats frazionari: vengono arrotondati al satoshi intero più vicino per il valore on-chain.",
+            "BTC and satoshi are synchronized. You can also paste fractional sats: they are rounded to the nearest whole satoshi for the on-chain value."
+        ),
+        this
+    );
     note->setWordWrap(true);
 
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, this);
-    buttons->button(QDialogButtonBox::Save)->setText("Salva");
-    buttons->button(QDialogButtonBox::Cancel)->setText("Annulla");
+    buttons->button(QDialogButtonBox::Save)->setText(L("Salva", "Save"));
+    buttons->button(QDialogButtonBox::Cancel)->setText(L("Annulla", "Cancel"));
 
     auto *layout = new QVBoxLayout(this);
     layout->addLayout(form);
@@ -101,14 +116,25 @@ void PurchaseDialog::validateAndAccept() {
     p.date = m_date->date();
     p.site = m_site->text().trimmed();
     p.txid = m_txid->text().trimmed();
+
     if (p.site.isEmpty()) {
-        QMessageBox::warning(this, "Dato mancante", "Inserisci il sito o exchange.");
+        QMessageBox::warning(
+            this,
+            L("Dato mancante", "Missing data"),
+            L("Inserisci il sito o exchange.", "Enter the site or exchange.")
+        );
         return;
     }
+
     if (!CsvUtils::parseEuroCents(m_euro->text(), &p.euroCents)) {
-        QMessageBox::warning(this, "Dato non valido", "L'importo in euro non è valido.");
+        QMessageBox::warning(
+            this,
+            L("Dato non valido", "Invalid data"),
+            L("L'importo in euro non è valido.", "The euro amount is not valid.")
+        );
         return;
     }
+
     qint64 b=-1, s=-1;
     const bool bOk = CsvUtils::parseBtcToSats(m_btc->text(), &b);
     const bool sOk = CsvUtils::parseSats(m_sats->text(), &s);
@@ -116,21 +142,33 @@ void PurchaseDialog::validateAndAccept() {
     if (!m_sats->text().trimmed().isEmpty() && !sOk) {
         QMessageBox::warning(
             this,
-            "Satoshi non validi",
-            "Formato satoshi non riconosciuto. Puoi usare, per esempio, "
-            "78489,696901 oppure 3,622.323."
+            L("Satoshi non validi", "Invalid satoshi"),
+            L(
+                "Formato satoshi non riconosciuto. Puoi usare, per esempio, 78489,696901 oppure 3,622.323.",
+                "Satoshi format not recognized. You can use, for example, 78489.696901 or 3,622.323."
+            )
         );
         return;
     }
 
     if (!bOk && !sOk) {
-        QMessageBox::warning(this, "Dato non valido", "Inserisci un valore BTC o satoshi valido.");
+        QMessageBox::warning(
+            this,
+            L("Dato non valido", "Invalid data"),
+            L("Inserisci un valore BTC o satoshi valido.", "Enter a valid BTC or satoshi value.")
+        );
         return;
     }
+
     if (bOk && sOk && b != s) {
-        QMessageBox::warning(this, "Valori incoerenti", "BTC e satoshi non corrispondono tra loro.");
+        QMessageBox::warning(
+            this,
+            L("Valori incoerenti", "Values do not match"),
+            L("BTC e satoshi non corrispondono tra loro.", "BTC and satoshi do not match.")
+        );
         return;
     }
+
     p.sats = sOk ? s : b;
     m_purchase = p;
     accept();

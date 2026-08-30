@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "language.h"
 
 #include <QApplication>
 #include <QIcon>
@@ -9,6 +10,8 @@ int main(int argc, char *argv[]) {
     QApplication::setOrganizationName("BTCPurchaseTracker");
     QApplication::setApplicationName("BTCPurchaseTracker");
     QApplication::setApplicationVersion("1.0.0");
+
+    AppLanguage::load();
 
     // L'icona è incorporata nell'eseguibile tramite Qt Resource System,
     // quindi funziona anche dentro l'AppImage e indipendentemente

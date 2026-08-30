@@ -1,4 +1,5 @@
 #include "csvutils.h"
+#include "language.h"
 
 #include <QFile>
 #include <QLocale>
@@ -8,6 +9,12 @@
 #include <QTextStream>
 #include <QStringConverter>
 #include <limits>
+
+namespace {
+QString L(const char *italian, const char *english) {
+    return AppLanguage::text(italian, english);
+}
+}
 
 namespace CsvUtils {
 
@@ -249,12 +256,12 @@ CsvImportResult importFile(const QString &path, const Database &db) {
     CsvImportResult result;
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        result.errors << QString("Impossibile aprire il file: %1").arg(f.errorString());
+        result.errors << L("Impossibile aprire il file: %1", "Unable to open the file: %1").arg(f.errorString());
         return result;
     }
     QTextStream in(&f);
     in.setEncoding(QStringConverter::Utf8);
-    if (in.atEnd()) { result.errors << "Il CSV è vuoto."; return result; }
+    if (in.atEnd()) { result.errors << L("Il CSV è vuoto.", "The CSV is empty."); return result; }
 
     QString headerLine = in.readLine();
     if (!headerLine.isEmpty() && headerLine.front() == QChar(0xFEFF)) headerLine.remove(0,1);
@@ -273,14 +280,17 @@ CsvImportResult importFile(const QString &path, const Database &db) {
     };
 
     const int iDate = find({"data", "date", "purchase date", "data acquisto"});
-    const int iSite = find({"sito", "site", "exchange", "piattaforma", "sito / exchange"});
-    const int iEuro = find({"euro", "eur", "euro spesi", "importo euro", "amount eur"});
+    const int iSite = find({"sito", "site", "exchange", "piattaforma", "sito / exchange", "site / exchange"});
+    const int iEuro = find({"euro", "eur", "euro spesi", "importo euro", "amount eur", "euro spent"});
     const int iBtc  = find({"btc", "bitcoin", "btc on chain", "btc on-chain"});
     const int iSats = find({"satoshi", "sats", "sat"});
-    const int iTx   = find({"tx", "txid", "transaction id", "id transazione", "tx / id transazione"});
+    const int iTx   = find({"tx", "txid", "transaction id", "id transazione", "tx / id transazione", "tx / transaction id"});
 
     if (iDate < 0 || iSite < 0 || iEuro < 0 || (iBtc < 0 && iSats < 0)) {
-        result.errors << "Intestazioni non riconosciute. Servono Data, Sito/Exchange, Euro e almeno BTC oppure Satoshi.";
+        result.errors << L(
+            "Intestazioni non riconosciute. Servono Data, Sito/Exchange, Euro e almeno BTC oppure Satoshi.",
+            "Unrecognized headers. Date, Site/Exchange, Euro and at least BTC or Satoshi are required."
+        );
         return result;
     }
 
@@ -298,19 +308,19 @@ CsvImportResult importFile(const QString &path, const Database &db) {
         p.site = get(iSite);
         p.txid = get(iTx);
         QStringList rowErrors;
-        if (!p.date.isValid()) rowErrors << "data non valida";
-        if (p.site.isEmpty()) rowErrors << "sito/exchange mancante";
-        if (!parseEuroCents(get(iEuro), &p.euroCents)) rowErrors << "euro non validi";
+        if (!p.date.isValid()) rowErrors << L("data non valida", "invalid date");
+        if (p.site.isEmpty()) rowErrors << L("sito/exchange mancante", "missing site/exchange");
+        if (!parseEuroCents(get(iEuro), &p.euroCents)) rowErrors << L("euro non validi", "invalid euro amount");
 
         qint64 satsFromBtc = -1, satsFromSats = -1;
         bool hasBtc = iBtc >= 0 && !get(iBtc).isEmpty();
         bool hasSats = iSats >= 0 && !get(iSats).isEmpty();
         bool btcOk = !hasBtc || parseBtcToSats(get(iBtc), &satsFromBtc);
         bool satsOk = !hasSats || parseSats(get(iSats), &satsFromSats);
-        if (!btcOk) rowErrors << "BTC non validi";
-        if (!satsOk) rowErrors << "satoshi non validi";
-        if (!hasBtc && !hasSats) rowErrors << "BTC/satoshi mancanti";
-        if (hasBtc && hasSats && btcOk && satsOk && satsFromBtc != satsFromSats) rowErrors << "BTC e satoshi non coincidono";
+        if (!btcOk) rowErrors << L("BTC non validi", "invalid BTC");
+        if (!satsOk) rowErrors << L("satoshi non validi", "invalid satoshi");
+        if (!hasBtc && !hasSats) rowErrors << L("BTC/satoshi mancanti", "missing BTC/satoshi");
+        if (hasBtc && hasSats && btcOk && satsOk && satsFromBtc != satsFromSats) rowErrors << L("BTC e satoshi non coincidono", "BTC and satoshi do not match");
         if (rowErrors.isEmpty()) p.sats = hasSats ? satsFromSats : satsFromBtc;
 
         if (!p.txid.isEmpty() && (db.txidExists(p.txid) || seenTx.contains(p.txid))) {
@@ -320,7 +330,9 @@ CsvImportResult importFile(const QString &path, const Database &db) {
         if (!p.txid.isEmpty()) seenTx.insert(p.txid);
 
         if (!rowErrors.isEmpty()) {
-            result.errors << QString("Riga %1: %2").arg(lineNo).arg(rowErrors.join(", "));
+            result.errors << (AppLanguage::isEnglish()
+                ? QString("Row %1: %2").arg(lineNo).arg(rowErrors.join(", "))
+                : QString("Riga %1: %2").arg(lineNo).arg(rowErrors.join(", ")));
         } else {
             result.validRows.push_back(p);
         }

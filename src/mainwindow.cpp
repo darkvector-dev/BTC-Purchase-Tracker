@@ -1,7 +1,10 @@
 #include "mainwindow.h"
 #include "csvutils.h"
+#include "language.h"
 #include "purchasedialog.h"
 
+#include <QAction>
+#include <QActionGroup>
 #include <QApplication>
 #include <QClipboard>
 #include <QCloseEvent>
@@ -20,6 +23,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLocale>
+#include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMouseEvent>
@@ -49,6 +53,12 @@
 #include <algorithm>
 #include <limits>
 
+
+namespace {
+QString L(const char *italian, const char *english) {
+    return AppLanguage::text(italian, english);
+}
+}
 
 class PurchasePriceChart : public QWidget {
 public:
@@ -93,7 +103,7 @@ protected:
             painter.drawText(
                 card.adjusted(20, 20, -20, -20),
                 Qt::AlignCenter,
-                "Nessun acquisto da visualizzare"
+                L("Nessun acquisto da visualizzare", "No purchases to display")
             );
             return;
         }
@@ -189,7 +199,7 @@ protected:
             painter.drawText(
                 QRectF(plot.left() + 6, avgY - 20, plot.width() - 12, 18),
                 Qt::AlignRight | Qt::AlignVCenter,
-                "Media " + it.toString(m_averagePrice, 'f', 0) + " €/BTC"
+                L("Media ", "Average ") + it.toString(m_averagePrice, 'f', 0) + " €/BTC"
             );
         }
 
@@ -380,7 +390,9 @@ bool writeAutomaticCsvBackup(const Database &db, QString *error = nullptr) {
     out << QChar(0xFEFF);
 
     const QChar delimiter = ';';
-    out << "Data;Sito / exchange;Euro spesi;BTC on-chain;Satoshi;TX / ID transazione\n";
+    out << (AppLanguage::isEnglish()
+        ? "Date;Site / exchange;Euro spent;BTC on-chain;Satoshi;TX / Transaction ID\n"
+        : "Data;Sito / exchange;Euro spesi;BTC on-chain;Satoshi;TX / ID transazione\n");
 
     for (const auto &p : rows) {
         out << p.date.toString("dd/MM/yyyy") << delimiter
@@ -391,7 +403,7 @@ bool writeAutomaticCsvBackup(const Database &db, QString *error = nullptr) {
             << CsvUtils::csvEscape(p.txid, delimiter) << "\n";
     }
 
-    out << "\nTOTALI;;"
+    out << "\n" << L("TOTALI", "TOTALS") << ";;"
         << QString::number(euro / 100.0, 'f', 2).replace('.', ',') << delimiter
         << CsvUtils::satsToBtc(sats).replace('.', ',') << delimiter
         << sats << delimiter << "\n";
@@ -409,7 +421,7 @@ public:
     explicit ClickableValueLabel(QWidget *parent = nullptr)
         : QLabel(parent) {
         setCursor(Qt::PointingHandCursor);
-        setToolTip("Clicca per copiare");
+        setToolTip(L("Clicca per copiare", "Click to copy"));
     }
 
 protected:
@@ -421,7 +433,7 @@ protected:
 
                 if (auto *mainWindow = qobject_cast<QMainWindow *>(window())) {
                     mainWindow->statusBar()->showMessage(
-                        "✓ Copiato negli appunti",
+                        L("✓ Copiato negli appunti", "✓ Copied to clipboard"),
                         1500
                     );
                 }
@@ -507,10 +519,19 @@ bool MainWindow::initializeDatabase() {
     QSettings settings(kOrg, kApp);
     QString folder = settings.value(kDbKey).toString();
     if (folder.isEmpty() || !QDir(folder).exists()) {
-        QMessageBox::information(this, "Prima configurazione",
-            "Scegli la cartella in cui vuoi conservare il database degli acquisti.\n\n"
-            "Il file rimarrà in quella posizione anche aggiornando o spostando l'applicazione.");
-        folder = chooseDatabaseFolder("Scegli la cartella del database");
+        QMessageBox::information(
+            this,
+            L("Prima configurazione", "First setup"),
+            L(
+                "Scegli la cartella in cui vuoi conservare il database degli acquisti.\n\n"
+                "Il file rimarrà in quella posizione anche aggiornando o spostando l'applicazione.",
+                "Choose the folder where you want to store the purchase database.\n\n"
+                "The file will remain in that location even if you update or move the application."
+            )
+        );
+        folder = chooseDatabaseFolder(
+            L("Scegli la cartella del database", "Choose the database folder")
+        );
         if (folder.isEmpty()) return false;
     }
     return openDatabaseAt(folder, true);
@@ -519,13 +540,20 @@ bool MainWindow::initializeDatabase() {
 bool MainWindow::openDatabaseAt(const QString &folder, bool remember) {
     QDir dir(folder);
     if (!dir.exists() && !dir.mkpath(".")) {
-        QMessageBox::critical(this, "Errore", "Impossibile creare o accedere alla cartella scelta.");
+        QMessageBox::critical(
+            this,
+            L("Errore", "Error"),
+            L(
+                "Impossibile creare o accedere alla cartella scelta.",
+                "Unable to create or access the selected folder."
+            )
+        );
         return false;
     }
     const QString path = dir.filePath(kDbName);
     QString error;
     if (!m_db.open(path, &error)) {
-        QMessageBox::critical(this, "Errore database", error);
+        QMessageBox::critical(this, L("Errore database", "Database error"), error);
         return false;
     }
     if (remember) {
@@ -537,9 +565,11 @@ bool MainWindow::openDatabaseAt(const QString &folder, bool remember) {
     if (!writeAutomaticCsvBackup(m_db, &csvError)) {
         QMessageBox::warning(
             this,
-            "Backup CSV automatico",
-            "Il database è stato aperto correttamente, ma non è stato possibile "
-            "aggiornare il CSV automatico:\n\n" + csvError
+            L("Backup CSV automatico", "Automatic CSV backup"),
+            L(
+                "Il database è stato aperto correttamente, ma non è stato possibile aggiornare il CSV automatico:\n\n",
+                "The database was opened successfully, but the automatic CSV backup could not be updated:\n\n"
+            ) + csvError
         );
     }
 
@@ -556,42 +586,41 @@ void MainWindow::buildUi() {
     auto *titleRow = new QHBoxLayout;
     auto *title = new QLabel("₿  BTC Purchase Tracker", this);
     QFont tf = title->font(); tf.setPointSize(tf.pointSize()+6); tf.setBold(true); title->setFont(tf);
-    auto *add = new QPushButton("+ Nuovo acquisto", this);
+    m_addButton = new QPushButton(this);
     titleRow->addWidget(title);
     titleRow->addStretch();
-    titleRow->addWidget(add);
+    titleRow->addWidget(m_addButton);
     outer->addLayout(titleRow);
 
     auto *cards = new QHBoxLayout;
-    auto makeCard = [&](const QString &caption, QLabel **value) {
+    auto makeCard = [&](QLabel **caption, QLabel **value) {
         auto *box = new QFrame(this);
         box->setFrameShape(QFrame::StyledPanel);
         auto *l = new QVBoxLayout(box);
-        auto *c = new QLabel(caption, box);
-        QFont cf=c->font(); cf.setBold(true); c->setFont(cf);
+        *caption = new QLabel(box);
+        QFont cf=(*caption)->font(); cf.setBold(true); (*caption)->setFont(cf);
         *value = new ClickableValueLabel(box);
         (*value)->setText("—");
         QFont vf=(*value)->font(); vf.setPointSize(vf.pointSize()+4); vf.setBold(true); (*value)->setFont(vf);
-        l->addWidget(c); l->addWidget(*value);
+        l->addWidget(*caption); l->addWidget(*value);
         cards->addWidget(box);
     };
-    makeCard("EURO SPESI", &m_totalEuro);
-    makeCard("BTC ACQUISTATI", &m_totalBtc);
-    makeCard("SATOSHI", &m_totalSats);
-    makeCard("PREZZO MEDIO €/BTC", &m_averagePrice);
+    makeCard(&m_cardEuroCaption, &m_totalEuro);
+    makeCard(&m_cardBtcCaption, &m_totalBtc);
+    makeCard(&m_cardSatsCaption, &m_totalSats);
+    makeCard(&m_cardAverageCaption, &m_averagePrice);
     outer->addLayout(cards);
 
     auto *filterRow = new QHBoxLayout;
-    auto *filterLabel = new QLabel("Anno:", this);
-    QFont ff = filterLabel->font();
+    m_filterLabel = new QLabel(this);
+    QFont ff = m_filterLabel->font();
     ff.setBold(true);
-    filterLabel->setFont(ff);
+    m_filterLabel->setFont(ff);
 
     m_yearFilter = new QComboBox(this);
     m_yearFilter->setMinimumWidth(150);
-    m_yearFilter->setToolTip("Filtra la tabella e i totali per anno");
 
-    filterRow->addWidget(filterLabel);
+    filterRow->addWidget(m_filterLabel);
     filterRow->addWidget(m_yearFilter);
     filterRow->addStretch();
     outer->addLayout(filterRow);
@@ -602,19 +631,18 @@ void MainWindow::buildUi() {
     chartLayout->setContentsMargins(0, 0, 0, 0);
     chartLayout->setSpacing(5);
 
-    auto *chartTitle = new QLabel("ANDAMENTO PREZZO DI ACQUISTO", chartBox);
-    QFont chartTitleFont = chartTitle->font();
+    m_chartTitle = new QLabel(chartBox);
+    QFont chartTitleFont = m_chartTitle->font();
     chartTitleFont.setBold(true);
-    chartTitle->setFont(chartTitleFont);
+    m_chartTitle->setFont(chartTitleFont);
 
     m_priceChart = new PurchasePriceChart(chartBox);
-    chartLayout->addWidget(chartTitle);
+    chartLayout->addWidget(m_chartTitle);
     chartLayout->addWidget(m_priceChart);
     outer->addWidget(chartBox);
 
     m_table = new QTableWidget(this);
     m_table->setColumnCount(6);
-    m_table->setHorizontalHeaderLabels({"Data", "Sito / exchange", "Euro", "BTC on-chain", "Satoshi", "TX / ID transazione"});
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_table->setSelectionMode(QAbstractItemView::SingleSelection);
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -636,14 +664,14 @@ void MainWindow::buildUi() {
     outer->addWidget(m_table, 1);
 
     auto *actions = new QHBoxLayout;
-    auto *edit = new QPushButton("Modifica", this);
-    auto *del = new QPushButton("Elimina", this);
-    auto *imp = new QPushButton("Importa CSV", this);
-    auto *expCsv = new QPushButton("Esporta CSV", this);
-    auto *expPdf = new QPushButton("Esporta PDF", this);
-    auto *backup = new QPushButton("Backup database", this);
-    actions->addWidget(edit); actions->addWidget(del); actions->addSpacing(20);
-    actions->addWidget(imp); actions->addWidget(expCsv); actions->addWidget(expPdf); actions->addStretch(); actions->addWidget(backup);
+    m_editButton = new QPushButton(this);
+    m_deleteButton = new QPushButton(this);
+    m_importButton = new QPushButton(this);
+    m_exportCsvButton = new QPushButton(this);
+    m_exportPdfButton = new QPushButton(this);
+    m_backupButton = new QPushButton(this);
+    actions->addWidget(m_editButton); actions->addWidget(m_deleteButton); actions->addSpacing(20);
+    actions->addWidget(m_importButton); actions->addWidget(m_exportCsvButton); actions->addWidget(m_exportPdfButton); actions->addStretch(); actions->addWidget(m_backupButton);
     outer->addLayout(actions);
 
     m_dbPath = new QLabel(this);
@@ -653,26 +681,120 @@ void MainWindow::buildUi() {
 
     setCentralWidget(central);
 
-    auto *dbMenu = menuBar()->addMenu("Database");
-    dbMenu->addAction("Mostra percorso", this, &MainWindow::showDatabasePath);
-    dbMenu->addAction("Cambia cartella…", this, &MainWindow::changeDatabaseFolder);
+    m_databaseMenu = menuBar()->addMenu(QString());
+    m_showPathAction = m_databaseMenu->addAction(QString(), this, &MainWindow::showDatabasePath);
+    m_changeFolderAction = m_databaseMenu->addAction(QString(), this, &MainWindow::changeDatabaseFolder);
 
-    auto *infoMenu = menuBar()->addMenu("Info");
-    infoMenu->addAction("BTC Purchase Tracker", this, &MainWindow::showAbout);
+    m_settingsMenu = menuBar()->addMenu(QString());
+    m_languageMenu = m_settingsMenu->addMenu(QString());
+    m_italianAction = m_languageMenu->addAction("Italiano");
+    m_englishAction = m_languageMenu->addAction("English");
+    m_italianAction->setCheckable(true);
+    m_englishAction->setCheckable(true);
 
-    connect(add, &QPushButton::clicked, this, &MainWindow::addPurchase);
-    connect(edit, &QPushButton::clicked, this, &MainWindow::editPurchase);
-    connect(del, &QPushButton::clicked, this, &MainWindow::deletePurchase);
-    connect(imp, &QPushButton::clicked, this, &MainWindow::importCsv);
-    connect(expCsv, &QPushButton::clicked, this, &MainWindow::exportCsv);
-    connect(expPdf, &QPushButton::clicked, this, &MainWindow::exportPdf);
-    connect(backup, &QPushButton::clicked, this, &MainWindow::backupDatabase);
+    auto *languageGroup = new QActionGroup(this);
+    languageGroup->setExclusive(true);
+    languageGroup->addAction(m_italianAction);
+    languageGroup->addAction(m_englishAction);
+
+    m_infoMenu = menuBar()->addMenu(QString());
+    m_aboutAction = m_infoMenu->addAction("BTC Purchase Tracker", this, &MainWindow::showAbout);
+
+    connect(m_addButton, &QPushButton::clicked, this, &MainWindow::addPurchase);
+    connect(m_editButton, &QPushButton::clicked, this, &MainWindow::editPurchase);
+    connect(m_deleteButton, &QPushButton::clicked, this, &MainWindow::deletePurchase);
+    connect(m_importButton, &QPushButton::clicked, this, &MainWindow::importCsv);
+    connect(m_exportCsvButton, &QPushButton::clicked, this, &MainWindow::exportCsv);
+    connect(m_exportPdfButton, &QPushButton::clicked, this, &MainWindow::exportPdf);
+    connect(m_backupButton, &QPushButton::clicked, this, &MainWindow::backupDatabase);
+
+    connect(m_italianAction, &QAction::triggered, this, [this] {
+        changeLanguage(false);
+    });
+    connect(m_englishAction, &QAction::triggered, this, [this] {
+        changeLanguage(true);
+    });
 
     connect(m_yearFilter, &QComboBox::currentIndexChanged, this, [this](int) {
         refresh();
     });
 
     connect(m_table, &QTableWidget::cellDoubleClicked, this, [this](int, int){ editPurchase(); });
+
+    applyLanguage();
+}
+
+void MainWindow::applyLanguage() {
+    m_addButton->setText(L("+ Nuovo acquisto", "+ New purchase"));
+
+    m_cardEuroCaption->setText(L("EURO SPESI", "EURO SPENT"));
+    m_cardBtcCaption->setText(L("BTC ACQUISTATI", "BTC PURCHASED"));
+    m_cardSatsCaption->setText("SATOSHI");
+    m_cardAverageCaption->setText(L("PREZZO MEDIO €/BTC", "AVERAGE PRICE €/BTC"));
+
+    const QString copyTip = L("Clicca per copiare", "Click to copy");
+    m_totalEuro->setToolTip(copyTip);
+    m_totalBtc->setToolTip(copyTip);
+    m_totalSats->setToolTip(copyTip);
+    m_averagePrice->setToolTip(copyTip);
+
+    m_filterLabel->setText(L("Anno:", "Year:"));
+    m_yearFilter->setToolTip(L("Filtra la tabella e i totali per anno", "Filter the table and totals by year"));
+    const int allYearsIndex = m_yearFilter->findData(0);
+    if (allYearsIndex >= 0)
+        m_yearFilter->setItemText(allYearsIndex, L("Tutti gli anni", "All years"));
+
+    m_chartTitle->setText(L("ANDAMENTO PREZZO DI ACQUISTO", "PURCHASE PRICE TREND"));
+    if (m_priceChart)
+        m_priceChart->update();
+
+    m_table->setHorizontalHeaderLabels({
+        L("Data", "Date"),
+        L("Sito / exchange", "Site / exchange"),
+        "Euro",
+        "BTC on-chain",
+        "Satoshi",
+        L("TX / ID transazione", "TX / Transaction ID")
+    });
+
+    m_editButton->setText(L("Modifica", "Edit"));
+    m_deleteButton->setText(L("Elimina", "Delete"));
+    m_importButton->setText(L("Importa CSV", "Import CSV"));
+    m_exportCsvButton->setText(L("Esporta CSV", "Export CSV"));
+    m_exportPdfButton->setText(L("Esporta PDF", "Export PDF"));
+    m_backupButton->setText(L("Backup database", "Database backup"));
+
+    m_databaseMenu->setTitle("Database");
+    m_showPathAction->setText(L("Mostra percorso", "Show path"));
+    m_changeFolderAction->setText(L("Cambia cartella…", "Change folder…"));
+
+    m_settingsMenu->setTitle(L("Impostazioni", "Settings"));
+    m_languageMenu->setTitle(L("Lingua", "Language"));
+    m_italianAction->setText("Italiano");
+    m_englishAction->setText("English");
+    m_italianAction->setChecked(!AppLanguage::isEnglish());
+    m_englishAction->setChecked(AppLanguage::isEnglish());
+
+    m_infoMenu->setTitle("Info");
+    m_aboutAction->setText("BTC Purchase Tracker");
+
+    if (!m_db.filePath().isEmpty())
+        m_dbPath->setText("Database: " + m_db.filePath());
+}
+
+void MainWindow::changeLanguage(bool english) {
+    const AppLanguage::Language language = english
+        ? AppLanguage::Language::English
+        : AppLanguage::Language::Italian;
+
+    if (AppLanguage::current() == language) {
+        applyLanguage();
+        return;
+    }
+
+    AppLanguage::setCurrent(language);
+    applyLanguage();
+    refresh();
 }
 
 void MainWindow::showAbout() {
@@ -692,13 +814,18 @@ void MainWindow::showAbout() {
     title->setFont(titleFont);
     title->setAlignment(Qt::AlignCenter);
 
-    auto *version = new QLabel("Versione 1.0.0", &dialog);
+    auto *version = new QLabel(L("Versione 1.0.0", "Version 1.0.0"), &dialog);
     version->setAlignment(Qt::AlignCenter);
 
     auto *description = new QLabel(
-        "Un semplice tracker offline per registrare gli acquisti Bitcoin nel tempo.<br>"
-        "Nessun account, nessun cloud, nessun collegamento al wallet.<br>"
-        "I tuoi dati restano sul tuo computer.",
+        L(
+            "Un semplice tracker offline per registrare gli acquisti Bitcoin nel tempo.<br>"
+            "Nessun account, nessun cloud, nessun collegamento al wallet.<br>"
+            "I tuoi dati restano sul tuo computer.",
+            "A simple offline tracker for recording Bitcoin purchases over time.<br>"
+            "No account, no cloud, no wallet connection.<br>"
+            "Your data stays on your computer."
+        ),
         &dialog
     );
     description->setTextFormat(Qt::RichText);
@@ -706,17 +833,20 @@ void MainWindow::showAbout() {
     description->setAlignment(Qt::AlignCenter);
 
     auto *thanks = new QLabel(
-        "Grazie per aver scaricato e utilizzato BTC Purchase Tracker.",
+        L(
+            "Grazie per aver scaricato e utilizzato BTC Purchase Tracker.",
+            "Thank you for downloading and using BTC Purchase Tracker."
+        ),
         &dialog
     );
     thanks->setWordWrap(true);
     thanks->setAlignment(Qt::AlignCenter);
 
     auto *contact = new QLabel(
-        "Contatto: "
-        "<a href=\"mailto:irql_not_less_or_equal@protonmail.com\">"
-        "irql_not_less_or_equal@protonmail.com"
-        "</a>",
+        L("Contatto: ", "Contact: ")
+        + QStringLiteral("<a href=\"mailto:irql_not_less_or_equal@protonmail.com\">"
+                         "irql_not_less_or_equal@protonmail.com"
+                         "</a>"),
         &dialog
     );
     contact->setTextFormat(Qt::RichText);
@@ -725,13 +855,17 @@ void MainWindow::showAbout() {
     contact->setAlignment(Qt::AlignCenter);
 
     auto *disclaimer = new QLabel(
-        "BTC Purchase Tracker non è un wallet e non fornisce consulenza finanziaria.",
+        L(
+            "BTC Purchase Tracker non è un wallet e non fornisce consulenza finanziaria.",
+            "BTC Purchase Tracker is not a wallet and does not provide financial advice."
+        ),
         &dialog
     );
     disclaimer->setWordWrap(true);
     disclaimer->setAlignment(Qt::AlignCenter);
 
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+    buttons->button(QDialogButtonBox::Close)->setText(L("Chiudi", "Close"));
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
 
     layout->addWidget(title);
@@ -753,7 +887,7 @@ void MainWindow::refresh() {
     QString error;
     const auto allRows = m_db.purchases(&error);
     if (!error.isEmpty()) {
-        QMessageBox::critical(this, "Errore database", error);
+        QMessageBox::critical(this, L("Errore database", "Database error"), error);
         return;
     }
 
@@ -774,7 +908,7 @@ void MainWindow::refresh() {
     {
         QSignalBlocker blocker(m_yearFilter);
         m_yearFilter->clear();
-        m_yearFilter->addItem("Tutti gli anni", 0);
+        m_yearFilter->addItem(L("Tutti gli anni", "All years"), 0);
 
         for (const int year : years)
             m_yearFilter->addItem(QString::number(year), year);
@@ -916,11 +1050,18 @@ void MainWindow::addPurchase() {
     if (dlg.exec() != QDialog::Accepted) return;
     Purchase p = dlg.purchase();
     if (!p.txid.isEmpty() && m_db.txidExists(p.txid)) {
-        if (QMessageBox::question(this, "TX già presente", "Esiste già una riga con questo TX/ID. Vuoi salvarla comunque?") != QMessageBox::Yes) return;
+        if (QMessageBox::question(
+                this,
+                L("TX già presente", "TX already exists"),
+                L(
+                    "Esiste già una riga con questo TX/ID. Vuoi salvarla comunque?",
+                    "A row with this TX/ID already exists. Do you want to save it anyway?"
+                )
+            ) != QMessageBox::Yes) return;
     }
     QString error;
     if (!m_db.addPurchase(p, &error)) {
-        QMessageBox::critical(this, "Errore", error);
+        QMessageBox::critical(this, L("Errore", "Error"), error);
         return;
     }
 
@@ -928,9 +1069,11 @@ void MainWindow::addPurchase() {
     if (!writeAutomaticCsvBackup(m_db, &csvError)) {
         QMessageBox::warning(
             this,
-            "Backup CSV automatico",
-            "L'operazione è stata salvata nel database, ma non è stato possibile "
-            "aggiornare il CSV automatico:\n\n" + csvError
+            L("Backup CSV automatico", "Automatic CSV backup"),
+            L(
+                "L'operazione è stata salvata nel database, ma non è stato possibile aggiornare il CSV automatico:\n\n",
+                "The operation was saved to the database, but the automatic CSV backup could not be updated:\n\n"
+            ) + csvError
         );
     }
     refresh();
@@ -938,16 +1081,33 @@ void MainWindow::addPurchase() {
 
 void MainWindow::editPurchase() {
     Purchase p = selectedPurchase();
-    if (p.id < 0) { QMessageBox::information(this, "Selezione", "Seleziona prima un acquisto."); return; }
+    if (p.id < 0) {
+        QMessageBox::information(
+            this,
+            L("Selezione", "Selection"),
+            L("Seleziona prima un acquisto.", "Select a purchase first.")
+        );
+        return;
+    }
+
     PurchaseDialog dlg(this, &p);
     if (dlg.exec() != QDialog::Accepted) return;
     Purchase updated = dlg.purchase();
+
     if (!updated.txid.isEmpty() && m_db.txidExists(updated.txid, updated.id)) {
-        if (QMessageBox::question(this, "TX già presente", "Esiste già un'altra riga con questo TX/ID. Vuoi salvare comunque?") != QMessageBox::Yes) return;
+        if (QMessageBox::question(
+                this,
+                L("TX già presente", "TX already exists"),
+                L(
+                    "Esiste già un'altra riga con questo TX/ID. Vuoi salvare comunque?",
+                    "Another row with this TX/ID already exists. Do you want to save it anyway?"
+                )
+            ) != QMessageBox::Yes) return;
     }
+
     QString error;
     if (!m_db.updatePurchase(updated, &error)) {
-        QMessageBox::critical(this, "Errore", error);
+        QMessageBox::critical(this, L("Errore", "Error"), error);
         return;
     }
 
@@ -955,9 +1115,11 @@ void MainWindow::editPurchase() {
     if (!writeAutomaticCsvBackup(m_db, &csvError)) {
         QMessageBox::warning(
             this,
-            "Backup CSV automatico",
-            "L'operazione è stata salvata nel database, ma non è stato possibile "
-            "aggiornare il CSV automatico:\n\n" + csvError
+            L("Backup CSV automatico", "Automatic CSV backup"),
+            L(
+                "L'operazione è stata salvata nel database, ma non è stato possibile aggiornare il CSV automatico:\n\n",
+                "The operation was saved to the database, but the automatic CSV backup could not be updated:\n\n"
+            ) + csvError
         );
     }
     refresh();
@@ -965,11 +1127,28 @@ void MainWindow::editPurchase() {
 
 void MainWindow::deletePurchase() {
     Purchase p = selectedPurchase();
-    if (p.id < 0) { QMessageBox::information(this, "Selezione", "Seleziona prima un acquisto."); return; }
-    if (QMessageBox::question(this, "Conferma eliminazione", QString("Eliminare l'acquisto del %1 su %2?").arg(p.date.toString("dd/MM/yyyy"), p.site)) != QMessageBox::Yes) return;
+    if (p.id < 0) {
+        QMessageBox::information(
+            this,
+            L("Selezione", "Selection"),
+            L("Seleziona prima un acquisto.", "Select a purchase first.")
+        );
+        return;
+    }
+
+    const QString question = AppLanguage::isEnglish()
+        ? QString("Delete the purchase from %1 on %2?").arg(p.date.toString("dd/MM/yyyy"), p.site)
+        : QString("Eliminare l'acquisto del %1 su %2?").arg(p.date.toString("dd/MM/yyyy"), p.site);
+
+    if (QMessageBox::question(
+            this,
+            L("Conferma eliminazione", "Confirm deletion"),
+            question
+        ) != QMessageBox::Yes) return;
+
     QString error;
     if (!m_db.deletePurchase(p.id, &error)) {
-        QMessageBox::critical(this, "Errore", error);
+        QMessageBox::critical(this, L("Errore", "Error"), error);
         return;
     }
 
@@ -977,34 +1156,54 @@ void MainWindow::deletePurchase() {
     if (!writeAutomaticCsvBackup(m_db, &csvError)) {
         QMessageBox::warning(
             this,
-            "Backup CSV automatico",
-            "L'operazione è stata salvata nel database, ma non è stato possibile "
-            "aggiornare il CSV automatico:\n\n" + csvError
+            L("Backup CSV automatico", "Automatic CSV backup"),
+            L(
+                "L'operazione è stata salvata nel database, ma non è stato possibile aggiornare il CSV automatico:\n\n",
+                "The operation was saved to the database, but the automatic CSV backup could not be updated:\n\n"
+            ) + csvError
         );
     }
     refresh();
 }
 
 void MainWindow::importCsv() {
-    const QString path = QFileDialog::getOpenFileName(this, "Importa CSV", QString(), "File CSV (*.csv);;Tutti i file (*)");
+    const QString filter = L("File CSV (*.csv);;Tutti i file (*)", "CSV files (*.csv);;All files (*)");
+    const QString path = QFileDialog::getOpenFileName(
+        this,
+        L("Importa CSV", "Import CSV"),
+        QString(),
+        filter
+    );
     if (path.isEmpty()) return;
+
     const auto result = CsvUtils::importFile(path, m_db);
     if (result.validRows.isEmpty()) {
-        QString msg = "Nessuna riga valida da importare.";
+        QString msg = L("Nessuna riga valida da importare.", "No valid rows to import.");
         if (!result.errors.isEmpty()) msg += "\n\n" + result.errors.mid(0,10).join("\n");
-        QMessageBox::warning(this, "Importazione CSV", msg);
+        QMessageBox::warning(this, L("Importazione CSV", "CSV import"), msg);
         return;
     }
 
-    QString summary = QString("Righe valide: %1\nDuplicati TX/ID ignorati: %2\nRighe con errori: %3")
-        .arg(result.validRows.size()).arg(result.duplicateRows).arg(result.errors.size());
-    if (!result.errors.isEmpty()) summary += "\n\nPrimi errori:\n" + result.errors.mid(0,8).join("\n");
-    summary += "\n\nImportare le righe valide?";
-    if (QMessageBox::question(this, "Anteprima importazione CSV", summary) != QMessageBox::Yes) return;
+    QString summary = AppLanguage::isEnglish()
+        ? QString("Valid rows: %1\nDuplicate TX/IDs ignored: %2\nRows with errors: %3")
+              .arg(result.validRows.size()).arg(result.duplicateRows).arg(result.errors.size())
+        : QString("Righe valide: %1\nDuplicati TX/ID ignorati: %2\nRighe con errori: %3")
+              .arg(result.validRows.size()).arg(result.duplicateRows).arg(result.errors.size());
+
+    if (!result.errors.isEmpty())
+        summary += L("\n\nPrimi errori:\n", "\n\nFirst errors:\n") + result.errors.mid(0,8).join("\n");
+
+    summary += L("\n\nImportare le righe valide?", "\n\nImport the valid rows?");
+
+    if (QMessageBox::question(
+            this,
+            L("Anteprima importazione CSV", "CSV import preview"),
+            summary
+        ) != QMessageBox::Yes) return;
 
     QString error;
     if (!m_db.addPurchasesTransaction(result.validRows, &error)) {
-        QMessageBox::critical(this, "Errore importazione", error);
+        QMessageBox::critical(this, L("Errore importazione", "Import error"), error);
         return;
     }
 
@@ -1012,26 +1211,62 @@ void MainWindow::importCsv() {
     if (!writeAutomaticCsvBackup(m_db, &csvError)) {
         QMessageBox::warning(
             this,
-            "Backup CSV automatico",
-            "L'operazione è stata salvata nel database, ma non è stato possibile "
-            "aggiornare il CSV automatico:\n\n" + csvError
+            L("Backup CSV automatico", "Automatic CSV backup"),
+            L(
+                "L'operazione è stata salvata nel database, ma non è stato possibile aggiornare il CSV automatico:\n\n",
+                "The operation was saved to the database, but the automatic CSV backup could not be updated:\n\n"
+            ) + csvError
         );
     }
+
     refresh();
-    QMessageBox::information(this, "Importazione completata", QString("Importate %1 righe.").arg(result.validRows.size()));
+    QMessageBox::information(
+        this,
+        L("Importazione completata", "Import complete"),
+        AppLanguage::isEnglish()
+            ? QString("Imported %1 rows.").arg(result.validRows.size())
+            : QString("Importate %1 righe.").arg(result.validRows.size())
+    );
 }
 
 void MainWindow::exportCsv() {
     const auto rows = m_db.purchases();
-    if (rows.isEmpty()) { QMessageBox::information(this, "Esporta CSV", "Non ci sono acquisti da esportare."); return; }
-    const QString path = QFileDialog::getSaveFileName(this, "Esporta CSV", "btc_acquisti.csv", "File CSV (*.csv)");
+    if (rows.isEmpty()) {
+        QMessageBox::information(
+            this,
+            L("Esporta CSV", "Export CSV"),
+            L("Non ci sono acquisti da esportare.", "There are no purchases to export.")
+        );
+        return;
+    }
+
+    const QString defaultName = AppLanguage::isEnglish()
+        ? QStringLiteral("btc_purchases.csv")
+        : QStringLiteral("btc_acquisti.csv");
+
+    const QString path = QFileDialog::getSaveFileName(
+        this,
+        L("Esporta CSV", "Export CSV"),
+        defaultName,
+        L("File CSV (*.csv)", "CSV files (*.csv)")
+    );
     if (path.isEmpty()) return;
+
     QSaveFile f(path.endsWith(".csv", Qt::CaseInsensitive) ? path : path + ".csv");
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) { QMessageBox::critical(this, "Errore", f.errorString()); return; }
-    QTextStream out(&f); out.setEncoding(QStringConverter::Utf8);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::critical(this, L("Errore", "Error"), f.errorString());
+        return;
+    }
+
+    QTextStream out(&f);
+    out.setEncoding(QStringConverter::Utf8);
     out << QChar(0xFEFF);
     const QChar d=';';
-    out << "Data;Sito / exchange;Euro spesi;BTC on-chain;Satoshi;TX / ID transazione\n";
+
+    out << (AppLanguage::isEnglish()
+        ? "Date;Site / exchange;Euro spent;BTC on-chain;Satoshi;TX / Transaction ID\n"
+        : "Data;Sito / exchange;Euro spesi;BTC on-chain;Satoshi;TX / ID transazione\n");
+
     for (const auto &p : rows) {
         out << p.date.toString("dd/MM/yyyy") << d
             << CsvUtils::csvEscape(p.site,d) << d
@@ -1040,22 +1275,54 @@ void MainWindow::exportCsv() {
             << p.sats << d
             << CsvUtils::csvEscape(p.txid,d) << "\n";
     }
+
     const auto [euro,sats]=m_db.totals();
-    out << "\nTOTALI;;" << QString::number(euro/100.0,'f',2).replace('.',',') << d
-        << CsvUtils::satsToBtc(sats).replace('.',',') << d << sats << d << "\n";
-    if (!f.commit()) { QMessageBox::critical(this, "Errore", f.errorString()); return; }
-    QMessageBox::information(this, "Esportazione completata", "CSV salvato correttamente.");
+    out << "\n" << L("TOTALI", "TOTALS") << ";;"
+        << QString::number(euro/100.0,'f',2).replace('.',',') << d
+        << CsvUtils::satsToBtc(sats).replace('.',',') << d
+        << sats << d << "\n";
+
+    if (!f.commit()) {
+        QMessageBox::critical(this, L("Errore", "Error"), f.errorString());
+        return;
+    }
+
+    QMessageBox::information(
+        this,
+        L("Esportazione completata", "Export complete"),
+        L("CSV salvato correttamente.", "CSV saved successfully.")
+    );
 }
 
 void MainWindow::exportPdf() {
     const auto rows = m_db.purchases();
-    if (rows.isEmpty()) { QMessageBox::information(this, "Esporta PDF", "Non ci sono acquisti da esportare."); return; }
-    QString path = QFileDialog::getSaveFileName(this, "Esporta PDF", "btc_acquisti.pdf", "PDF (*.pdf)");
+    if (rows.isEmpty()) {
+        QMessageBox::information(
+            this,
+            L("Esporta PDF", "Export PDF"),
+            L("Non ci sono acquisti da esportare.", "There are no purchases to export.")
+        );
+        return;
+    }
+
+    const QString defaultName = AppLanguage::isEnglish()
+        ? QStringLiteral("btc_purchases.pdf")
+        : QStringLiteral("btc_acquisti.pdf");
+
+    QString path = QFileDialog::getSaveFileName(
+        this,
+        L("Esporta PDF", "Export PDF"),
+        defaultName,
+        "PDF (*.pdf)"
+    );
     if (path.isEmpty()) return;
     if (!path.endsWith(".pdf", Qt::CaseInsensitive)) path += ".pdf";
 
     QPdfWriter writer(path);
-    writer.setTitle("BTC Purchase Tracker - Report acquisti");
+    writer.setTitle(L(
+        "BTC Purchase Tracker - Report acquisti",
+        "BTC Purchase Tracker - Purchase report"
+    ));
     writer.setCreator("BTC Purchase Tracker");
     writer.setPageSize(QPageSize(QPageSize::A4));
     writer.setPageOrientation(QPageLayout::Landscape);
@@ -1065,58 +1332,155 @@ void MainWindow::exportPdf() {
     QString html = "<html><head><style>body{font-family:sans-serif;font-size:9pt;}h1{font-size:18pt;}"
                    "table{border-collapse:collapse;width:100%;}th,td{border:1px solid #aaa;padding:5px;}"
                    "th{background:#eee;}td.num{text-align:right;} .tot{font-size:11pt;margin:12px 0;}</style></head><body>";
-    html += "<h1>BTC Purchase Tracker — Report acquisti</h1>";
-    html += QString("<div class='tot'><b>Totale euro spesi:</b> %1 &nbsp;&nbsp; <b>Totale BTC:</b> %2 &nbsp;&nbsp; <b>Totale satoshi:</b> %3</div>")
-        .arg(htmlEscape(CsvUtils::formatEuro(euro)), CsvUtils::satsToBtc(sats), htmlEscape(CsvUtils::formatSats(sats)));
-    html += "<table><tr><th>Data</th><th>Sito / exchange</th><th>Euro</th><th>BTC on-chain</th><th>Satoshi</th><th>TX / ID transazione</th></tr>";
+
+    html += "<h1>" + L(
+        "BTC Purchase Tracker — Report acquisti",
+        "BTC Purchase Tracker — Purchase report"
+    ) + "</h1>";
+
+    html += QString("<div class='tot'><b>%1:</b> %2 &nbsp;&nbsp; <b>%3:</b> %4 &nbsp;&nbsp; <b>%5:</b> %6</div>")
+        .arg(
+            L("Totale euro spesi", "Total euro spent"),
+            htmlEscape(CsvUtils::formatEuro(euro)),
+            L("Totale BTC", "Total BTC"),
+            CsvUtils::satsToBtc(sats),
+            L("Totale satoshi", "Total satoshi"),
+            htmlEscape(CsvUtils::formatSats(sats))
+        );
+
+    html += QString("<table><tr><th>%1</th><th>%2</th><th>Euro</th><th>BTC on-chain</th><th>Satoshi</th><th>%3</th></tr>")
+        .arg(
+            L("Data", "Date"),
+            L("Sito / exchange", "Site / exchange"),
+            L("TX / ID transazione", "TX / Transaction ID")
+        );
+
     for (const auto &p : rows) {
         html += QString("<tr><td>%1</td><td>%2</td><td class='num'>%3</td><td class='num'>%4</td><td class='num'>%5</td><td>%6</td></tr>")
-            .arg(p.date.toString("dd/MM/yyyy"), htmlEscape(p.site), htmlEscape(CsvUtils::formatEuro(p.euroCents)),
-                 CsvUtils::satsToBtc(p.sats), htmlEscape(CsvUtils::formatSats(p.sats)), htmlEscape(p.txid));
+            .arg(
+                p.date.toString("dd/MM/yyyy"),
+                htmlEscape(p.site),
+                htmlEscape(CsvUtils::formatEuro(p.euroCents)),
+                CsvUtils::satsToBtc(p.sats),
+                htmlEscape(CsvUtils::formatSats(p.sats)),
+                htmlEscape(p.txid)
+            );
     }
+
     html += "</table>";
-    html += QString("<p>Generato il %1</p></body></html>").arg(QDateTime::currentDateTime().toString("dd/MM/yyyy HH:mm"));
+    html += QString("<p>%1 %2</p></body></html>")
+        .arg(
+            L("Generato il", "Generated on"),
+            QDateTime::currentDateTime().toString("dd/MM/yyyy HH:mm")
+        );
 
     QTextDocument doc;
     doc.setHtml(html);
     doc.print(&writer);
-    QMessageBox::information(this, "Esportazione completata", "PDF salvato correttamente.");
+
+    QMessageBox::information(
+        this,
+        L("Esportazione completata", "Export complete"),
+        L("PDF salvato correttamente.", "PDF saved successfully.")
+    );
 }
 
 void MainWindow::backupDatabase() {
-    const QString path = QFileDialog::getSaveFileName(this, "Backup database", "btc-purchase-tracker-backup.sqlite", "SQLite (*.sqlite *.db);;Tutti i file (*)");
+    const QString path = QFileDialog::getSaveFileName(
+        this,
+        L("Backup database", "Database backup"),
+        "btc-purchase-tracker-backup.sqlite",
+        L("SQLite (*.sqlite *.db);;Tutti i file (*)", "SQLite (*.sqlite *.db);;All files (*)")
+    );
     if (path.isEmpty()) return;
-    if (QFile::exists(path) && !QFile::remove(path)) { QMessageBox::critical(this, "Errore", "Impossibile sovrascrivere il file di destinazione."); return; }
-    if (!QFile::copy(m_db.filePath(), path)) { QMessageBox::critical(this, "Errore", "Impossibile copiare il database."); return; }
-    QMessageBox::information(this, "Backup completato", "Backup creato correttamente.");
+
+    if (QFile::exists(path) && !QFile::remove(path)) {
+        QMessageBox::critical(
+            this,
+            L("Errore", "Error"),
+            L(
+                "Impossibile sovrascrivere il file di destinazione.",
+                "Unable to overwrite the destination file."
+            )
+        );
+        return;
+    }
+
+    if (!QFile::copy(m_db.filePath(), path)) {
+        QMessageBox::critical(
+            this,
+            L("Errore", "Error"),
+            L("Impossibile copiare il database.", "Unable to copy the database.")
+        );
+        return;
+    }
+
+    QMessageBox::information(
+        this,
+        L("Backup completato", "Backup complete"),
+        L("Backup creato correttamente.", "Backup created successfully.")
+    );
 }
 
 void MainWindow::showDatabasePath() {
-    QMessageBox::information(this, "Percorso database", m_db.filePath());
+    QMessageBox::information(
+        this,
+        L("Percorso database", "Database path"),
+        m_db.filePath()
+    );
 }
 
 void MainWindow::changeDatabaseFolder() {
     const QString oldPath = m_db.filePath();
-    const QString folder = chooseDatabaseFolder("Scegli la nuova cartella del database", QFileInfo(oldPath).absolutePath());
+    const QString folder = chooseDatabaseFolder(
+        L("Scegli la nuova cartella del database", "Choose the new database folder"),
+        QFileInfo(oldPath).absolutePath()
+    );
     if (folder.isEmpty()) return;
+
     const QString newPath = QDir(folder).filePath(kDbName);
     if (QFileInfo(newPath).absoluteFilePath() == QFileInfo(oldPath).absoluteFilePath()) return;
+
     if (QFile::exists(newPath)) {
-        QMessageBox::warning(this, "File già presente", "Nella cartella scelta esiste già un database con lo stesso nome. Operazione annullata.");
+        QMessageBox::warning(
+            this,
+            L("File già presente", "File already exists"),
+            L(
+                "Nella cartella scelta esiste già un database con lo stesso nome. Operazione annullata.",
+                "A database with the same name already exists in the selected folder. Operation cancelled."
+            )
+        );
         return;
     }
+
     m_db.close();
     if (!QFile::copy(oldPath, newPath)) {
         QString error;
         m_db.open(oldPath, &error);
-        QMessageBox::critical(this, "Errore", "Impossibile copiare il database nella nuova cartella.");
+        QMessageBox::critical(
+            this,
+            L("Errore", "Error"),
+            L(
+                "Impossibile copiare il database nella nuova cartella.",
+                "Unable to copy the database to the new folder."
+            )
+        );
         return;
     }
+
     if (!openDatabaseAt(folder, true)) {
         QString error;
         m_db.open(oldPath, &error);
         return;
     }
+
     refresh();
-    QMessageBox::information(this, "Database spostato", "Il database è stato copiato nella nuova cartella.\n\nIl vecchio file non è stato cancellato, così resta come copia di sicurezza.");
+    QMessageBox::information(
+        this,
+        L("Database spostato", "Database moved"),
+        L(
+            "Il database è stato copiato nella nuova cartella.\n\nIl vecchio file non è stato cancellato, così resta come copia di sicurezza.",
+            "The database was copied to the new folder.\n\nThe old file was not deleted, so it remains as a safety copy."
+        )
+    );
 }

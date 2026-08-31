@@ -103,6 +103,9 @@ jobs:
             dist/BTC-Purchase-Tracker-1.0.0-x86_64.AppImage \
             > dist/BTC-Purchase-Tracker-1.0.0-x86_64.AppImage.sha256
 
+          cp LICENSE dist/LICENSE.txt
+          cp README.md dist/README.md
+
           file \
             dist/BTC-Purchase-Tracker-1.0.0-x86_64.AppImage
 
@@ -116,5 +119,7 @@ jobs:
           path: |
             dist/BTC-Purchase-Tracker-1.0.0-x86_64.AppImage
             dist/BTC-Purchase-Tracker-1.0.0-x86_64.AppImage.sha256
+            dist/LICENSE.txt
+            dist/README.md
           if-no-files-found: error
           retention-days: 30

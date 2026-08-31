@@ -63,6 +63,10 @@ jobs:
             Copy-Item "LICENSE" "$packageDir\LICENSE.txt"
           }
 
+          if (Test-Path "README.md") {
+            Copy-Item "README.md" "$packageDir\README.md"
+          }
+
           if (!(Test-Path "$packageDir\platforms\qwindows.dll")) {
             throw "Packaging incompleto: manca platforms\qwindows.dll"
           }

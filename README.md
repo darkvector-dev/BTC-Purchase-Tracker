@@ -218,9 +218,15 @@ The repository includes a GitHub Actions workflow for generating a portable Wind
 
 ## License
 
-BTC Purchase Tracker is released under the **MIT License**. See [`LICENSE`](LICENSE) for details.
+BTC Purchase Tracker is free and open-source software licensed under the **GNU General Public License v3.0 or later (GPL-3.0-or-later)**. See [`LICENSE`](LICENSE) for the complete license text.
+
+You may use, study, modify and redistribute the software under the terms of the GPL. If you distribute modified versions or other covered derivative works, the GPL requires the corresponding source code to remain available under the applicable GPL terms.
+
+Copyright (c) 2026 BTC Purchase Tracker contributors.
 
 Third-party components and licensing information are listed in [`THIRD_PARTY.md`](THIRD_PARTY.md).
+
+The **BTC Purchase Tracker** name and logo identify the official project. The software license does not grant permission to present modified or unofficial builds as official releases of BTC Purchase Tracker.
 
 ---
 

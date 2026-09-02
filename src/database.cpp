@@ -271,7 +271,7 @@ bool Database::addPurchase(const Purchase &p, QString *error) {
     q.addBindValue(p.site);
     q.addBindValue(p.euroCents);
     q.addBindValue(p.sats);
-    q.addBindValue(p.txid);
+    q.addBindValue(p.txid.isNull() ? QStringLiteral("") : p.txid);
     if (!q.exec()) {
         if (error) *error = q.lastError().text();
         return false;
@@ -288,7 +288,7 @@ bool Database::updatePurchase(const Purchase &p, QString *error) {
     q.addBindValue(p.site);
     q.addBindValue(p.euroCents);
     q.addBindValue(p.sats);
-    q.addBindValue(p.txid);
+    q.addBindValue(p.txid.isNull() ? QStringLiteral("") : p.txid);
     q.addBindValue(p.id);
     if (!q.exec()) {
         if (error) *error = q.lastError().text();
@@ -338,7 +338,7 @@ bool Database::addPurchasesTransaction(const QVector<Purchase> &rows, QString *e
         q.bindValue(1, p.site);
         q.bindValue(2, p.euroCents);
         q.bindValue(3, p.sats);
-        q.bindValue(4, p.txid);
+        q.bindValue(4, p.txid.isNull() ? QStringLiteral("") : p.txid);
         if (!q.exec()) {
             m_db.rollback();
             if (error) *error = q.lastError().text();

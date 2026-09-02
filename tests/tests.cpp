@@ -160,6 +160,26 @@ void testCsvValidation(const QString &root) {
     const CsvImportResult invalid = CsvUtils::importFile(invalidPath, db);
     expect(invalid.validRows.isEmpty(), QStringLiteral("reject dates outside range and zero values"));
     expect(invalid.errors.size() == 4, QStringLiteral("report every invalid CSV row"));
+
+    const QString noTxidPath = root + QStringLiteral("/no-txid.csv");
+    const QString noTxidContents = QStringLiteral("Data;Sito / Exchange;Euro spesi;Satoshi\n")
+        + QStringLiteral("03/01/2009;No TXID;10,00;100\n");
+    expect(writeUtf8(noTxidPath, noTxidContents), QStringLiteral("write CSV fixture without TXID"));
+    const CsvImportResult noTxid = CsvUtils::importFile(noTxidPath, db);
+    expect(noTxid.validRows.size() == 1, QStringLiteral("accept CSV without TXID column"));
+    expect(noTxid.validRows.first().txid.isEmpty() && !noTxid.validRows.first().txid.isNull(),
+           QStringLiteral("normalize missing TXID to a non-null empty string"));
+    expect(db.addPurchasesTransaction(noTxid.validRows, &error),
+           QStringLiteral("import CSV row without TXID into database: %1").arg(error));
+
+    const QString blankTxidPath = root + QStringLiteral("/blank-txid.csv");
+    const QString blankTxidContents = header
+        + QStringLiteral("03/01/2009;Blank TXID;10,00;100;\n");
+    expect(writeUtf8(blankTxidPath, blankTxidContents), QStringLiteral("write CSV fixture with blank TXID"));
+    const CsvImportResult blankTxid = CsvUtils::importFile(blankTxidPath, db);
+    expect(blankTxid.validRows.size() == 1, QStringLiteral("accept CSV with blank TXID"));
+    expect(db.addPurchasesTransaction(blankTxid.validRows, &error),
+           QStringLiteral("import CSV row with blank TXID into database: %1").arg(error));
 }
 }
 

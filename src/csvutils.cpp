@@ -378,6 +378,8 @@ CsvImportResult importFile(const QString &path, const Database &db) {
         p.date = parseDate(get(iDate));
         p.site = get(iSite);
         p.txid = get(iTx);
+        if (p.txid.isNull())
+            p.txid = QStringLiteral("");
         QStringList rowErrors;
         if (!p.date.isValid()) {
             rowErrors << L("data non valida", "invalid date");

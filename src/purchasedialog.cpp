@@ -139,7 +139,8 @@ void PurchaseDialog::validateAndAccept() {
         return;
     }
 
-    if (!CsvUtils::parseMoneyCents(m_amount->text(), m_currency, &p.euroCents)) {
+    if (!CsvUtils::parseMoneyCents(m_amount->text(), m_currency, &p.euroCents)
+        || p.euroCents <= 0) {
         QMessageBox::warning(
             this,
             L("Dato non valido", "Invalid data"),
@@ -185,6 +186,14 @@ void PurchaseDialog::validateAndAccept() {
     }
 
     p.sats = sOk ? s : b;
+    if (p.sats <= 0) {
+        QMessageBox::warning(
+            this,
+            L("Dato non valido", "Invalid data"),
+            L("I satoshi devono essere maggiori di zero.", "Satoshi must be greater than zero.")
+        );
+        return;
+    }
     m_purchase = p;
     accept();
 }

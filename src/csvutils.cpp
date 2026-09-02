@@ -364,6 +364,8 @@ CsvImportResult importFile(const QString &path, const Database &db) {
     }
 
     QSet<QString> seenTx;
+    const QDate minimumPurchaseDate(2009, 1, 3);
+    const QDate maximumPurchaseDate = QDate::currentDate();
     int lineNo = 1;
     while (!in.atEnd()) {
         ++lineNo;
@@ -377,9 +379,17 @@ CsvImportResult importFile(const QString &path, const Database &db) {
         p.site = get(iSite);
         p.txid = get(iTx);
         QStringList rowErrors;
-        if (!p.date.isValid()) rowErrors << L("data non valida", "invalid date");
+        if (!p.date.isValid()) {
+            rowErrors << L("data non valida", "invalid date");
+        } else if (p.date < minimumPurchaseDate || p.date > maximumPurchaseDate) {
+            rowErrors << L(
+                "data fuori intervallo (dal 03/01/2009 a oggi)",
+                "date outside the allowed range (03/01/2009 through today)"
+            );
+        }
         if (p.site.isEmpty()) rowErrors << L("sito/exchange mancante", "missing site/exchange");
-        if (!parseMoneyCents(get(iAmount), db.currency(), &p.euroCents)) {
+        if (!parseMoneyCents(get(iAmount), db.currency(), &p.euroCents)
+            || p.euroCents <= 0) {
             rowErrors << (useUsd
                 ? L("dollari non validi", "invalid USD amount")
                 : L("euro non validi", "invalid euro amount"));
@@ -394,7 +404,12 @@ CsvImportResult importFile(const QString &path, const Database &db) {
         if (!satsOk) rowErrors << L("satoshi non validi", "invalid satoshi");
         if (!hasBtc && !hasSats) rowErrors << L("BTC/satoshi mancanti", "missing BTC/satoshi");
         if (hasBtc && hasSats && btcOk && satsOk && satsFromBtc != satsFromSats) rowErrors << L("BTC e satoshi non coincidono", "BTC and satoshi do not match");
-        if (rowErrors.isEmpty()) p.sats = hasSats ? satsFromSats : satsFromBtc;
+        if ((hasBtc || hasSats) && btcOk && satsOk
+            && (!hasBtc || !hasSats || satsFromBtc == satsFromSats)) {
+            p.sats = hasSats ? satsFromSats : satsFromBtc;
+            if (p.sats <= 0)
+                rowErrors << L("i satoshi devono essere maggiori di zero", "satoshi must be greater than zero");
+        }
 
         if (!p.txid.isEmpty() && (db.txidExists(p.txid) || seenTx.contains(p.txid))) {
             ++result.duplicateRows;

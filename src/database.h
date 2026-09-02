@@ -26,6 +26,7 @@ public:
     bool open(const QString &filePath, QString *error = nullptr);
     void close();
     QString filePath() const { return m_filePath; }
+    bool backupTo(const QString &destinationPath, QString *error = nullptr) const;
 
     bool hasStoredCurrency() const { return m_hasStoredCurrency; }
     AppCurrency::Currency currency() const { return m_currency; }

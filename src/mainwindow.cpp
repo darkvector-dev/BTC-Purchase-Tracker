@@ -1812,25 +1812,14 @@ void MainWindow::backupDatabase() {
     );
     if (path.isEmpty()) return;
 
-    if (QFile::exists(path) && !QFile::remove(path)) {
-        DiagnosticLog::error(QStringLiteral("Database backup failed: destination could not be overwritten"));
+    QString error;
+    if (!m_db.backupTo(path, &error)) {
+        DiagnosticLog::error(QStringLiteral("Database backup failed: %1").arg(error));
         QMessageBox::critical(
             this,
             L("Errore", "Error"),
-            L(
-                "Impossibile sovrascrivere il file di destinazione.",
-                "Unable to overwrite the destination file."
-            )
-        );
-        return;
-    }
-
-    if (!QFile::copy(m_db.filePath(), path)) {
-        DiagnosticLog::error(QStringLiteral("Database backup failed: copy operation failed"));
-        QMessageBox::critical(
-            this,
-            L("Errore", "Error"),
-            L("Impossibile copiare il database.", "Unable to copy the database.")
+            L("Impossibile creare il backup del database.\n\n", "Unable to create the database backup.\n\n")
+                + error
         );
         return;
     }
@@ -1875,24 +1864,21 @@ void MainWindow::changeDatabaseFolder() {
         return;
     }
 
-    m_db.close();
-    if (!QFile::copy(oldPath, newPath)) {
-        DiagnosticLog::error(QStringLiteral("Database move failed: copy operation failed"));
-        QString error;
-        m_db.open(oldPath, &error);
+    QString error;
+    if (!m_db.backupTo(newPath, &error)) {
+        DiagnosticLog::error(QStringLiteral("Database move failed: %1").arg(error));
         QMessageBox::critical(
             this,
             L("Errore", "Error"),
             L(
-                "Impossibile copiare il database nella nuova cartella.",
-                "Unable to copy the database to the new folder."
-            )
+                "Impossibile copiare il database nella nuova cartella.\n\n",
+                "Unable to copy the database to the new folder.\n\n"
+            ) + error
         );
         return;
     }
 
     if (!openDatabaseAt(folder, true)) {
-        QString error;
         m_db.open(oldPath, &error);
         return;
     }

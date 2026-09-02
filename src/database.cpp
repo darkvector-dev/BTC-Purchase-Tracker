@@ -1,9 +1,28 @@
 #include "database.h"
 
+#include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QSqlError>
 #include <QSqlQuery>
+#include <QTemporaryFile>
 #include <QUuid>
+
+namespace {
+bool validatePositiveValues(const Purchase &purchase, QString *error) {
+    if (purchase.euroCents <= 0) {
+        if (error)
+            *error = QStringLiteral("The purchase amount must be greater than zero.");
+        return false;
+    }
+    if (purchase.sats <= 0) {
+        if (error)
+            *error = QStringLiteral("The satoshi amount must be greater than zero.");
+        return false;
+    }
+    return true;
+}
+}
 
 Database::Database() : m_connectionName(uniqueConnectionName()) {}
 Database::~Database() { close(); }
@@ -39,6 +58,102 @@ void Database::close() {
     m_hasStoredCurrency = false;
 }
 
+bool Database::backupTo(const QString &destinationPath, QString *error) const {
+    if (!m_db.isOpen() || m_filePath.isEmpty()) {
+        if (error) *error = QStringLiteral("The database is not open.");
+        return false;
+    }
+
+    const QFileInfo sourceInfo(m_filePath);
+    const QFileInfo destinationInfo(destinationPath);
+    const QString sourceCanonical = sourceInfo.canonicalFilePath();
+    const QString destinationCanonical = destinationInfo.canonicalFilePath();
+#ifdef Q_OS_WIN
+    constexpr Qt::CaseSensitivity pathCaseSensitivity = Qt::CaseInsensitive;
+#else
+    constexpr Qt::CaseSensitivity pathCaseSensitivity = Qt::CaseSensitive;
+#endif
+    const bool sameCanonicalFile = !sourceCanonical.isEmpty()
+        && !destinationCanonical.isEmpty()
+        && sourceCanonical.compare(destinationCanonical, pathCaseSensitivity) == 0;
+    const bool sameAbsolutePath = sourceInfo.absoluteFilePath().compare(
+        destinationInfo.absoluteFilePath(), pathCaseSensitivity) == 0;
+    if (sameCanonicalFile || sameAbsolutePath) {
+        if (error) *error = QStringLiteral("The backup destination is the active database.");
+        return false;
+    }
+
+    QDir destinationDir = destinationInfo.absoluteDir();
+    if (!destinationDir.exists()) {
+        if (error) *error = QStringLiteral("The backup destination folder does not exist.");
+        return false;
+    }
+
+    QTemporaryFile temporaryBackup(destinationDir.filePath(
+        QStringLiteral(".%1.backup-XXXXXX").arg(destinationInfo.fileName())));
+    if (!temporaryBackup.open()) {
+        if (error) *error = temporaryBackup.errorString();
+        return false;
+    }
+    const QString temporaryPath = temporaryBackup.fileName();
+    temporaryBackup.close();
+    if (!QFile::remove(temporaryPath)) {
+        if (error) *error = QStringLiteral("Unable to prepare the temporary backup file.");
+        return false;
+    }
+    temporaryBackup.setAutoRemove(false);
+
+    QString escapedPath = temporaryPath;
+    escapedPath.replace(QChar('\''), QStringLiteral("''"));
+    QSqlQuery backupQuery(m_db);
+    if (!backupQuery.exec(QStringLiteral("VACUUM INTO '%1'").arg(escapedPath))) {
+        QFile::remove(temporaryPath);
+        if (error) *error = backupQuery.lastError().text();
+        return false;
+    }
+
+    const QString destinationAbsolute = destinationInfo.absoluteFilePath();
+    QString previousPath;
+    if (QFile::exists(destinationAbsolute)) {
+        QTemporaryFile previousHolder(destinationDir.filePath(
+            QStringLiteral(".%1.previous-XXXXXX").arg(destinationInfo.fileName())));
+        if (!previousHolder.open()) {
+            QFile::remove(temporaryPath);
+            if (error) *error = previousHolder.errorString();
+            return false;
+        }
+        previousPath = previousHolder.fileName();
+        previousHolder.close();
+        if (!QFile::remove(previousPath)) {
+            QFile::remove(temporaryPath);
+            if (error) *error = QStringLiteral("Unable to preserve the existing backup.");
+            return false;
+        }
+        previousHolder.setAutoRemove(false);
+        if (!QFile::rename(destinationAbsolute, previousPath)) {
+            QFile::remove(temporaryPath);
+            if (error) *error = QStringLiteral("Unable to preserve the existing backup.");
+            return false;
+        }
+    }
+
+    if (!QFile::rename(temporaryPath, destinationAbsolute)) {
+        const bool restored = previousPath.isEmpty()
+            || QFile::rename(previousPath, destinationAbsolute);
+        QFile::remove(temporaryPath);
+        if (error) {
+            *error = restored
+                ? QStringLiteral("Unable to replace the backup destination.")
+                : QStringLiteral("Unable to replace the backup destination or restore the previous backup.");
+        }
+        return false;
+    }
+
+    if (!previousPath.isEmpty())
+        QFile::remove(previousPath);
+    return true;
+}
+
 bool Database::ensureSchema(QString *error) {
     QSqlQuery q(m_db);
     const char *sql = R"SQL(
@@ -46,8 +161,8 @@ bool Database::ensureSchema(QString *error) {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             purchase_date TEXT NOT NULL,
             site TEXT NOT NULL,
-            euro_cents INTEGER NOT NULL CHECK(euro_cents >= 0),
-            sats INTEGER NOT NULL CHECK(sats >= 0),
+            euro_cents INTEGER NOT NULL CHECK(euro_cents > 0),
+            sats INTEGER NOT NULL CHECK(sats > 0),
             txid TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         )
@@ -148,6 +263,8 @@ QVector<Purchase> Database::purchases(QString *error) const {
 }
 
 bool Database::addPurchase(const Purchase &p, QString *error) {
+    if (!validatePositiveValues(p, error))
+        return false;
     QSqlQuery q(m_db);
     q.prepare("INSERT INTO purchases (purchase_date, site, euro_cents, sats, txid) VALUES (?, ?, ?, ?, ?)");
     q.addBindValue(p.date.toString(Qt::ISODate));
@@ -163,6 +280,8 @@ bool Database::addPurchase(const Purchase &p, QString *error) {
 }
 
 bool Database::updatePurchase(const Purchase &p, QString *error) {
+    if (!validatePositiveValues(p, error))
+        return false;
     QSqlQuery q(m_db);
     q.prepare("UPDATE purchases SET purchase_date=?, site=?, euro_cents=?, sats=?, txid=? WHERE id=?");
     q.addBindValue(p.date.toString(Qt::ISODate));
@@ -193,17 +312,21 @@ bool Database::txidExists(const QString &txid, qint64 excludeId) const {
     if (txid.trimmed().isEmpty()) return false;
     QSqlQuery q(m_db);
     if (excludeId >= 0) {
-        q.prepare("SELECT 1 FROM purchases WHERE txid=? AND id<>? LIMIT 1");
+        q.prepare("SELECT 1 FROM purchases WHERE txid COLLATE BINARY = ? AND id<>? LIMIT 1");
         q.addBindValue(txid.trimmed());
         q.addBindValue(excludeId);
     } else {
-        q.prepare("SELECT 1 FROM purchases WHERE txid=? LIMIT 1");
+        q.prepare("SELECT 1 FROM purchases WHERE txid COLLATE BINARY = ? LIMIT 1");
         q.addBindValue(txid.trimmed());
     }
     return q.exec() && q.next();
 }
 
 bool Database::addPurchasesTransaction(const QVector<Purchase> &rows, QString *error) {
+    for (const auto &p : rows) {
+        if (!validatePositiveValues(p, error))
+            return false;
+    }
     if (!m_db.transaction()) {
         if (error) *error = m_db.lastError().text();
         return false;

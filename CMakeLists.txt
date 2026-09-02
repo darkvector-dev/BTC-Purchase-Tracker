@@ -8,6 +8,7 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Sql)
+include(CTest)
 
 add_executable(btc-purchase-tracker
     src/main.cpp
@@ -27,6 +28,21 @@ add_executable(btc-purchase-tracker
 )
 
 target_link_libraries(btc-purchase-tracker PRIVATE Qt6::Widgets Qt6::Sql)
+
+if(BUILD_TESTING)
+    add_executable(btc-purchase-tracker-tests
+        tests/tests.cpp
+        src/database.cpp
+        src/database.h
+        src/csvutils.cpp
+        src/csvutils.h
+        src/language.h
+        src/currency.h
+    )
+    target_include_directories(btc-purchase-tracker-tests PRIVATE src)
+    target_link_libraries(btc-purchase-tracker-tests PRIVATE Qt6::Core Qt6::Sql)
+    add_test(NAME btc-purchase-tracker-tests COMMAND btc-purchase-tracker-tests)
+endif()
 
 # Windows-specific packaging details only.
 # The application sources remain shared with Linux/macOS.

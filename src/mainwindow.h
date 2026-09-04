@@ -27,6 +27,7 @@ private slots:
     void importCsv();
     void exportCsv();
     void exportPdf();
+    void showMonthlySummary();
     void backupDatabase();
     void showDatabasePath();
     void changeDatabaseFolder();
@@ -55,6 +56,7 @@ private:
     QLabel *m_totalBtc{};
     QLabel *m_totalSats{};
     QLabel *m_averagePrice{};
+    QLabel *m_monthlyAverage{};
     QComboBox *m_yearFilter{};
     PurchasePriceChart *m_priceChart{};
     QLabel *m_dbPath{};
@@ -63,6 +65,7 @@ private:
     QLabel *m_cardBtcCaption{};
     QLabel *m_cardSatsCaption{};
     QLabel *m_cardAverageCaption{};
+    QLabel *m_cardMonthlyAverageCaption{};
     QLabel *m_filterLabel{};
     QLabel *m_chartTitle{};
 
@@ -72,6 +75,7 @@ private:
     QPushButton *m_importButton{};
     QPushButton *m_exportCsvButton{};
     QPushButton *m_exportPdfButton{};
+    QPushButton *m_monthlySummaryButton{};
     QPushButton *m_backupButton{};
 
     QMenu *m_databaseMenu{};

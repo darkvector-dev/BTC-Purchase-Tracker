@@ -1,5 +1,6 @@
 #include "csvutils.h"
 #include "database.h"
+#include "monthlystats.h"
 
 #include <QCoreApplication>
 #include <QDate>
@@ -181,6 +182,58 @@ void testCsvValidation(const QString &root) {
     expect(db.addPurchasesTransaction(blankTxid.validRows, &error),
            QStringLiteral("import CSV row with blank TXID into database: %1").arg(error));
 }
+
+void testMonthlyStatistics() {
+    QVector<Purchase> purchases;
+
+    Purchase january = purchase(QStringLiteral("monthly-january"), 10000, 100);
+    january.date = QDate(2026, 1, 10);
+    purchases.push_back(january);
+
+    Purchase marchOne = purchase(QStringLiteral("monthly-march-1"), 20000, 100);
+    marchOne.date = QDate(2026, 3, 2);
+    purchases.push_back(marchOne);
+
+    Purchase marchTwo = purchase(QStringLiteral("monthly-march-2"), 5000, 100);
+    marchTwo.date = QDate(2026, 3, 20);
+    purchases.push_back(marchTwo);
+
+    Purchase previousYear = purchase(QStringLiteral("monthly-previous"), 12000, 100);
+    previousYear.date = QDate(2025, 12, 15);
+    purchases.push_back(previousYear);
+
+    const QDate today(2026, 9, 4);
+
+    const MonthlySummary currentYear = MonthlyStats::calculate(purchases, 2026, today);
+    expect(currentYear.months.size() == 9,
+           QStringLiteral("current year includes January through the current month"));
+    expect(currentYear.months[0].amountCents == 10000,
+           QStringLiteral("monthly summary totals January"));
+    expect(currentYear.months[1].amountCents == 0,
+           QStringLiteral("monthly summary includes zero-spending months"));
+    expect(currentYear.months[2].amountCents == 25000,
+           QStringLiteral("monthly summary combines purchases in the same month"));
+    expect(currentYear.totalCents == 35000,
+           QStringLiteral("current-year monthly total"));
+    expect(currentYear.averageCents == 3889,
+           QStringLiteral("current-year average is rounded to the nearest cent"));
+
+    const MonthlySummary pastYear = MonthlyStats::calculate(purchases, 2025, today);
+    expect(pastYear.months.size() == 12,
+           QStringLiteral("past year includes all twelve months"));
+    expect(pastYear.averageCents == 1000,
+           QStringLiteral("past-year average includes zero-spending months"));
+
+    const MonthlySummary allYears = MonthlyStats::calculate(purchases, 0, today);
+    expect(allYears.months.size() == 4,
+           QStringLiteral("all-years summary spans first through last purchase month"));
+    expect(allYears.totalCents == 47000 && allYears.averageCents == 11750,
+           QStringLiteral("all-years average includes gaps between first and last purchase"));
+
+    const MonthlySummary empty = MonthlyStats::calculate({}, 0, today);
+    expect(empty.months.isEmpty() && empty.averageCents == 0,
+           QStringLiteral("empty history has no monthly average"));
+}
 }
 
 int main(int argc, char *argv[]) {
@@ -191,6 +244,7 @@ int main(int argc, char *argv[]) {
         testDatabaseRulesAndBackup(temporaryDir.path());
         testLegacyDatabaseCompatibility(temporaryDir.path());
         testCsvValidation(temporaryDir.path());
+        testMonthlyStatistics();
     }
     if (failures == 0)
         QTextStream(stdout) << "All tests passed.\n";

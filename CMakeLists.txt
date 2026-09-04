@@ -22,6 +22,8 @@ add_executable(btc-purchase-tracker
     src/purchasedialog.h
     src/database.cpp
     src/database.h
+    src/monthlystats.cpp
+    src/monthlystats.h
     src/csvutils.cpp
     src/csvutils.h
     resources/resources.qrc
@@ -34,6 +36,8 @@ if(BUILD_TESTING)
         tests/tests.cpp
         src/database.cpp
         src/database.h
+        src/monthlystats.cpp
+        src/monthlystats.h
         src/csvutils.cpp
         src/csvutils.h
         src/language.h

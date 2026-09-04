@@ -15,8 +15,10 @@ It is designed to work without accounts, cloud services or wallet connections: y
 - Add, edit and delete purchases
 - View total fiat spent, total BTC purchased and total satoshi
 - Calculate the average purchase price per BTC
+- Calculate the average monthly DCA spending for the selected period
 - Filter purchases and totals by year
 - View the purchase-price trend on a chronological chart
+- View monthly spending on a vertical bar chart
 - Sort purchase data directly from the table
 - Click summary values to copy them to the clipboard
 - Import purchases from CSV with validation and duplicate detection

@@ -3,6 +3,7 @@
 #include "diagnosticlog.h"
 #include "currency.h"
 #include "language.h"
+#include "monthlystats.h"
 #include "purchasedialog.h"
 
 #include <QAction>
@@ -39,6 +40,7 @@
 #include <QPushButton>
 #include <QPixmap>
 #include <QSaveFile>
+#include <QScrollArea>
 #include <QSet>
 #include <QSignalBlocker>
 #include <QStatusBar>
@@ -354,6 +356,145 @@ private:
     AppCurrency::Currency m_currency{AppCurrency::Currency::Euro};
     double m_hoverX{};
     bool m_hoverActive{false};
+};
+
+class MonthlySpendChart : public QWidget {
+public:
+    explicit MonthlySpendChart(QWidget *parent = nullptr)
+        : QWidget(parent) {
+        setMinimumHeight(410);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    }
+
+    void setData(QVector<MonthlySpend> months) {
+        m_months = std::move(months);
+        setMinimumWidth(qMax(760, 105 + m_months.size() * 68));
+        updateGeometry();
+        update();
+    }
+
+    void setCurrency(AppCurrency::Currency currency) {
+        m_currency = currency;
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override {
+        Q_UNUSED(event);
+
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+
+        const QColor textColor = palette().color(QPalette::Text);
+        const QColor mutedColor = palette().color(QPalette::PlaceholderText);
+        const QColor gridColor = palette().color(QPalette::Mid);
+        const QColor barColor = palette().color(QPalette::Highlight);
+        const QColor backgroundColor = palette().color(QPalette::Base);
+
+        const QRectF card = rect().adjusted(1, 1, -1, -1);
+        painter.setPen(QPen(gridColor, 1));
+        painter.setBrush(backgroundColor);
+        painter.drawRoundedRect(card, 8, 8);
+
+        if (m_months.isEmpty()) {
+            painter.setPen(mutedColor);
+            painter.drawText(
+                card.adjusted(20, 20, -20, -20),
+                Qt::AlignCenter,
+                L("Nessun acquisto da visualizzare", "No purchases to display")
+            );
+            return;
+        }
+
+        const QRectF plot = card.adjusted(82, 42, -24, -64);
+        if (plot.width() <= 1 || plot.height() <= 1)
+            return;
+
+        qint64 maximumCents = 0;
+        for (const auto &month : m_months)
+            maximumCents = qMax(maximumCents, month.amountCents);
+        maximumCents = qMax<qint64>(maximumCents, 1);
+
+        QFont axisFont = painter.font();
+        axisFont.setPointSize(qMax(8, axisFont.pointSize() - 1));
+        painter.setFont(axisFont);
+
+        for (int i = 0; i <= 4; ++i) {
+            const double ratio = static_cast<double>(i) / 4.0;
+            const double y = plot.bottom() - ratio * plot.height();
+            QColor grid = gridColor;
+            grid.setAlpha(90);
+            painter.setPen(QPen(grid, 1));
+            painter.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y));
+
+            const qint64 valueCents = qRound64(maximumCents * ratio);
+            painter.setPen(mutedColor);
+            painter.drawText(
+                QRectF(card.left() + 6, y - 10, 70, 20),
+                Qt::AlignRight | Qt::AlignVCenter,
+                AppCurrency::formatMajor(valueCents / 100.0, m_currency, 0)
+            );
+        }
+
+        const double slotWidth = plot.width() / m_months.size();
+        const double barWidth = qMin(44.0, slotWidth * 0.66);
+        const bool multipleYears = m_months.first().month.year()
+            != m_months.last().month.year();
+        const QLocale monthLocale = AppLanguage::isEnglish()
+            ? QLocale(QLocale::English, QLocale::UnitedStates)
+            : QLocale(QLocale::Italian, QLocale::Italy);
+
+        for (int i = 0; i < m_months.size(); ++i) {
+            const auto &month = m_months[i];
+            const double centerX = plot.left() + slotWidth * (i + 0.5);
+            const double barHeight = month.amountCents > 0
+                ? (static_cast<double>(month.amountCents) / maximumCents) * plot.height()
+                : 0.0;
+            const QRectF bar(
+                centerX - barWidth / 2.0,
+                plot.bottom() - barHeight,
+                barWidth,
+                barHeight
+            );
+
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(barColor);
+            if (barHeight > 0.0)
+                painter.drawRoundedRect(bar, 4, 4);
+
+            const int decimals = month.amountCents % 100 == 0 ? 0 : 2;
+            const QString valueLabel = AppCurrency::formatMajor(
+                month.amountCents / 100.0,
+                m_currency,
+                decimals
+            );
+            painter.setPen(textColor);
+            painter.drawText(
+                QRectF(
+                    centerX - slotWidth / 2.0,
+                    qMax(plot.top() - 23, bar.top() - 23),
+                    slotWidth,
+                    20
+                ),
+                Qt::AlignCenter,
+                valueLabel
+            );
+
+            const QString monthLabel = multipleYears
+                ? month.month.toString(QStringLiteral("MM/yy"))
+                : monthLocale.monthName(month.month.month(), QLocale::ShortFormat);
+            painter.setPen(mutedColor);
+            painter.drawText(
+                QRectF(centerX - slotWidth / 2.0, plot.bottom() + 12, slotWidth, 22),
+                Qt::AlignCenter,
+                monthLabel
+            );
+        }
+    }
+
+private:
+    QVector<MonthlySpend> m_months;
+    AppCurrency::Currency m_currency{AppCurrency::Currency::Euro};
 };
 
 namespace {
@@ -740,12 +881,13 @@ void MainWindow::buildUi() {
         (*value)->setText("—");
         QFont vf=(*value)->font(); vf.setPointSize(vf.pointSize()+4); vf.setBold(true); (*value)->setFont(vf);
         l->addWidget(*caption); l->addWidget(*value);
-        cards->addWidget(box);
+        cards->addWidget(box, 1);
     };
     makeCard(&m_cardEuroCaption, &m_totalEuro);
     makeCard(&m_cardBtcCaption, &m_totalBtc);
     makeCard(&m_cardSatsCaption, &m_totalSats);
     makeCard(&m_cardAverageCaption, &m_averagePrice);
+    makeCard(&m_cardMonthlyAverageCaption, &m_monthlyAverage);
     outer->addLayout(cards);
 
     auto *filterRow = new QHBoxLayout;
@@ -756,9 +898,11 @@ void MainWindow::buildUi() {
 
     m_yearFilter = new QComboBox(this);
     m_yearFilter->setMinimumWidth(150);
+    m_monthlySummaryButton = new QPushButton(this);
 
     filterRow->addWidget(m_filterLabel);
     filterRow->addWidget(m_yearFilter);
+    filterRow->addWidget(m_monthlySummaryButton);
     filterRow->addStretch();
     outer->addLayout(filterRow);
 
@@ -850,6 +994,7 @@ void MainWindow::buildUi() {
     connect(m_importButton, &QPushButton::clicked, this, &MainWindow::importCsv);
     connect(m_exportCsvButton, &QPushButton::clicked, this, &MainWindow::exportCsv);
     connect(m_exportPdfButton, &QPushButton::clicked, this, &MainWindow::exportPdf);
+    connect(m_monthlySummaryButton, &QPushButton::clicked, this, &MainWindow::showMonthlySummary);
     connect(m_backupButton, &QPushButton::clicked, this, &MainWindow::backupDatabase);
 
     connect(m_italianAction, &QAction::triggered, this, [this] {
@@ -881,15 +1026,24 @@ void MainWindow::applyLanguage() {
         L("PREZZO MEDIO ", "AVERAGE PRICE ")
         + AppCurrency::pricePerBtcUnit(m_db.currency())
     );
+    m_cardMonthlyAverageCaption->setText(
+        L("MEDIA MENSILE DCA", "MONTHLY DCA AVERAGE")
+    );
 
     const QString copyTip = L("Clicca per copiare", "Click to copy");
     m_totalEuro->setToolTip(copyTip);
     m_totalBtc->setToolTip(copyTip);
     m_totalSats->setToolTip(copyTip);
     m_averagePrice->setToolTip(copyTip);
+    m_monthlyAverage->setToolTip(copyTip);
 
     m_filterLabel->setText(L("Anno:", "Year:"));
     m_yearFilter->setToolTip(L("Filtra la tabella e i totali per anno", "Filter the table and totals by year"));
+    m_monthlySummaryButton->setText(L("Riepilogo mensile", "Monthly summary"));
+    m_monthlySummaryButton->setToolTip(L(
+        "Mostra la spesa totale per ogni mese",
+        "Show total spending for each month"
+    ));
     const int allYearsIndex = m_yearFilter->findData(0);
     if (allYearsIndex >= 0)
         m_yearFilter->setItemText(allYearsIndex, L("Tutti gli anni", "All years"));
@@ -1352,6 +1506,23 @@ void MainWindow::refresh() {
     m_totalBtc->setText(CsvUtils::satsToBtc(sats) + " BTC");
     m_totalSats->setText(CsvUtils::formatSats(sats) + " sats");
 
+    const MonthlySummary monthlySummary = MonthlyStats::calculate(
+        allRows,
+        selectedYear
+    );
+    if (!monthlySummary.months.isEmpty()) {
+        m_monthlyAverage->setText(
+            CsvUtils::formatMoney(monthlySummary.averageCents, m_db.currency())
+        );
+        m_monthlyAverage->setProperty(
+            "clipboardValue",
+            AppCurrency::plainAmount(monthlySummary.averageCents, m_db.currency())
+        );
+    } else {
+        m_monthlyAverage->setText("—");
+        m_monthlyAverage->setProperty("clipboardValue", QString());
+    }
+
     // Prezzo medio di acquisto: valuta investita / BTC acquistati.
     // È solo un valore di visualizzazione: i dati salvati restano interi
     // (centesimi della valuta scelta e satoshi).
@@ -1624,6 +1795,55 @@ void MainWindow::importCsv() {
             ? QString("Imported %1 rows.").arg(result.validRows.size())
             : QString("Importate %1 righe.").arg(result.validRows.size())
     );
+}
+
+void MainWindow::showMonthlySummary() {
+    QString error;
+    const auto purchases = m_db.purchases(&error);
+    if (!error.isEmpty()) {
+        DiagnosticLog::error(QStringLiteral("Monthly summary query failed: %1").arg(error));
+        QMessageBox::critical(this, L("Errore database", "Database error"), error);
+        return;
+    }
+
+    const int selectedYear = m_yearFilter
+        ? m_yearFilter->currentData().toInt()
+        : 0;
+    const MonthlySummary summary = MonthlyStats::calculate(purchases, selectedYear);
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(L("Riepilogo mensile", "Monthly summary"));
+    dialog.resize(1000, 560);
+
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *title = new QLabel(&dialog);
+    QFont titleFont = title->font();
+    titleFont.setPointSize(titleFont.pointSize() + 2);
+    titleFont.setBold(true);
+    title->setFont(titleFont);
+    title->setText(selectedYear == 0
+        ? L("SPESA MENSILE — TUTTI GLI ANNI", "MONTHLY SPENDING — ALL YEARS")
+        : L("SPESA MENSILE — %1", "MONTHLY SPENDING — %1").arg(selectedYear));
+    layout->addWidget(title);
+
+    auto *scrollArea = new QScrollArea(&dialog);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+
+    auto *chart = new MonthlySpendChart(scrollArea);
+    chart->setCurrency(m_db.currency());
+    chart->setData(summary.months);
+    scrollArea->setWidget(chart);
+    layout->addWidget(scrollArea, 1);
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
+    buttons->button(QDialogButtonBox::Close)->setText(L("Chiudi", "Close"));
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttons);
+
+    dialog.exec();
 }
 
 void MainWindow::exportCsv() {

@@ -50,15 +50,6 @@ jobs:
           rm -rf AppDir
           DESTDIR="$PWD/AppDir" cmake --install build-appimage
 
-      - name: Collect license notices
-        run: |
-          docdir="AppDir/usr/share/doc/btc-purchase-tracker"
-          mkdir -p "$docdir/licenses/ubuntu"
-          cp LICENSE "$docdir/LICENSE.txt"
-          cp README.md THIRD_PARTY.md "$docdir/"
-          cp licenses/*.txt "$docdir/licenses/"
-          python3 scripts/collect-ubuntu-notices.py "$docdir"
-
       - name: Download linuxdeploy tools
         run: |
           mkdir -p tools
@@ -90,7 +81,17 @@ jobs:
             --appdir AppDir \
             --desktop-file assets/btc-purchase-tracker.desktop \
             --icon-file assets/btc-purchase-tracker.svg \
-            --plugin qt \
+            --plugin qt
+
+          # Inspect deployed libraries before sealing the AppImage.
+          docdir="AppDir/usr/share/doc/btc-purchase-tracker"
+          mkdir -p "$docdir"
+          cp LICENSE "$docdir/LICENSE.txt"
+          cp README.md THIRD_PARTY.md "$docdir/"
+          python3 scripts/collect-ubuntu-notices.py AppDir "$docdir"
+
+          ./tools/linuxdeploy-x86_64.AppImage \
+            --appdir AppDir \
             --output appimage
 
           mkdir -p dist
@@ -113,8 +114,6 @@ jobs:
 
           cp LICENSE dist/LICENSE.txt
           cp README.md THIRD_PARTY.md dist/
-          cp -r AppDir/usr/share/doc/btc-purchase-tracker/licenses dist/
-          cp AppDir/usr/share/doc/btc-purchase-tracker/BUILD-INFO.txt dist/
 
           file \
             dist/BTC-Purchase-Tracker-1.0.0-x86_64.AppImage
@@ -132,7 +131,5 @@ jobs:
             dist/LICENSE.txt
             dist/README.md
             dist/THIRD_PARTY.md
-            dist/licenses/
-            dist/BUILD-INFO.txt
           if-no-files-found: error
           retention-days: 30

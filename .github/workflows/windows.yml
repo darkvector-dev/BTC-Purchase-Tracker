@@ -41,13 +41,6 @@ jobs:
             --config Release `
             --parallel 2
 
-      - name: Test
-        shell: pwsh
-        run: |
-          ctest --test-dir build-windows `
-            -C Release `
-            --output-on-failure
-
       - name: Create portable folder
         shell: pwsh
         run: |

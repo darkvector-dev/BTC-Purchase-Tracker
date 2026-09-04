@@ -18,6 +18,8 @@ It is designed to work without accounts, cloud services or wallet connections: y
 - Calculate the average monthly DCA spending for the selected period
 - Filter purchases and totals by year
 - View the purchase-price trend on a chronological chart
+- Hover over the chart to see purchase dates, amounts spent and prices per BTC
+- Inspect all purchases on the same date and their daily spending total
 - View monthly spending on a vertical bar chart
 - Sort purchase data directly from the table
 - Click summary values to copy them to the clipboard
@@ -157,7 +159,7 @@ Windows SmartScreen may display a warning for an unsigned application downloaded
 
 ### Linux x86_64
 
-Download the Linux ZIP archive and extract the included AppImage.
+Download the Linux AppImage from the release assets. If it is supplied inside a ZIP, extract it first.
 
 If necessary, make it executable:
 
@@ -175,11 +177,21 @@ No system-wide installation is required.
 
 ## SHA-256 verification
 
-Each release package includes the corresponding SHA-256 checksum file supplied with that build.
+Download the checksum file alongside the corresponding release asset. The Windows checksum covers the complete portable ZIP; the Linux checksum covers the AppImage.
 
-Use it to verify that the executable or AppImage has not been corrupted or altered after packaging.
+On Linux, place both files in the same folder and run:
 
-On Linux, SHA-256 files can be checked with `sha256sum`. On Windows, hashes can be calculated with PowerShell using `Get-FileHash`.
+```bash
+sha256sum -c BTC-Purchase-Tracker-1.0.0-x86_64.AppImage.sha256
+```
+
+On Windows, calculate the ZIP hash in PowerShell and compare it with the `.sha256` file:
+
+```powershell
+Get-FileHash .\BTC-Purchase-Tracker-1.0.0-Windows-x64.zip -Algorithm SHA256
+```
+
+A matching checksum checks file integrity against that checksum; it is not a publisher signature.
 
 ## Building from source
 

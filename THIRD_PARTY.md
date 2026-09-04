@@ -1,54 +1,47 @@
 # Third-party components
 
-BTC Purchase Tracker uses dynamically linked Qt 6 libraries (including Widgets,
-Core, GUI and SQL) and the SQLite database driver. The application's own license
-is GPL-3.0-or-later; third-party components retain their respective licenses.
+BTC Purchase Tracker uses dynamically linked Qt 6 libraries and the SQLite
+database driver. The application is licensed GPL-3.0-or-later; third-party
+components retain their respective licenses.
 
 ## Qt
 
-Qt is copyright The Qt Company Ltd. and other contributors. The essential Qt
-libraries are available under LGPLv3 or GPL terms, with separate terms for some
-embedded third-party code. This project uses the open-source Qt distribution.
+Qt is copyright The Qt Company Ltd. and other contributors. This project uses
+the open-source Qt distribution. Qt libraries are available under LGPLv3 or GPL
+terms, while some embedded third-party components use their own licenses.
 Copies of GPLv3 and LGPLv3 are included in `licenses/`.
 
 - Licensing: https://doc.qt.io/qt-6/licensing.html
 - Third-party code: https://doc.qt.io/qt-6/licenses-used-in-qt.html
 - Source archives: https://download.qt.io/archive/qt/
-- Obligations: https://www.qt.io/development/open-source-lgpl-obligations
+- Open-source obligations: https://www.qt.io/development/open-source-lgpl-obligations
 
-Recipients may modify or replace LGPL libraries and reverse engineer for debugging
-those modifications as permitted by their licenses. Rebuild instructions for the
-application are in README.md. Use compatible replacement shared libraries; an
-AppImage can be extracted with `--appimage-extract` for inspection and rebuilding.
+Recipients may modify or replace LGPL libraries and reverse engineer for
+debugging those modifications as permitted by their licenses. Application
+rebuild instructions are in README.md. An AppImage can be extracted with
+`--appimage-extract` to inspect its contents.
 
 ## SQLite
 
 SQLite is in the public domain: https://www.sqlite.org/copyright.html
-It may be provided by Qt's bundled copy or by the Linux runtime. The actual
-version and applicable notices must be checked in each generated package.
 
-## Build-specific information
+## Windows package
 
-Windows packages include Qt Base source notices collected from the source archive
-matching the installed Qt version, plus a build information file. The matching
-Qt Base source archive is emitted as a separate build artifact for publication.
-Microsoft runtime files retain Microsoft's terms; they are not covered by the
-application's GPL license.
+The Windows build uses Qt Base and Qt SVG. Its package contains the notices
+collected from the matching Qt source archives and a `BUILD-INFO.txt` file with
+the exact Qt version and source filenames. The workflow also emits the complete
+matching Qt Base and Qt SVG archives as separate maintainer artifacts.
 
-The Linux AppImage includes Ubuntu copyright notices for the shared libraries
-actually deployed in AppDir, with package/source versions and referenced common
-license texts. These are retained inside the AppImage at
-`usr/share/doc/btc-purchase-tracker/` (accessible after `--appimage-extract`).
-The download does not duplicate that license directory outside the AppImage.
-The inventory covers Ubuntu shared libraries; it is not an inventory of the
-AppImage launcher/runtime or of statically embedded third-party code.
+The Microsoft Visual C++ runtime is not bundled. Users who do not already have
+it can install the official x64 Redistributable linked from README.md.
 
-## Release maintainer check
+## Linux AppImage
 
-Before publishing binaries, inspect the actual DLLs/shared libraries and preserve
-all applicable notices, including dependencies embedded in Qt. Make the complete
-corresponding sources for covered distributed components available with the
-release under their applicable licenses. For Ubuntu libraries, retain the exact
-Ubuntu source package version and patches, not just the upstream Qt sources.
-Third-party website links and generic license texts alone do not complete that
-source distribution step. See RELEASE_CHECKLIST.md in the repository.
+The AppImage contains copyright notices for the Ubuntu shared libraries actually
+deployed inside it, their exact binary/source package versions and direct source
+package pages. The information is stored under
+`usr/share/doc/btc-purchase-tracker/` and is available after extraction.
+
+The AppImage type-2 runtime identifies its own license, embedded dependencies,
+source revision and source locations through the `--appimage-help` and
+`--appimage-version` commands.

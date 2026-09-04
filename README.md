@@ -157,6 +157,8 @@ The Windows release is portable and does not require a traditional installer.
 
 Windows SmartScreen may display a warning for an unsigned application downloaded from the Internet.
 
+The archive does not bundle the Microsoft Visual C++ runtime. If the application does not start or Windows reports a missing runtime DLL, install the latest official **Microsoft Visual C++ Redistributable x64** from [Microsoft's download page](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170), then start the application again.
+
 ### Linux x86_64
 
 Download the Linux AppImage from the release assets. If it is supplied inside a ZIP, extract it first.

@@ -4,6 +4,7 @@ import re
 import shutil
 import subprocess
 import sys
+import urllib.parse
 from pathlib import Path
 
 
@@ -37,9 +38,15 @@ def collect(appdir, destination):
     notices.mkdir(parents=True, exist_ok=True)
     common_names = {'GPL-3', 'LGPL-3'}
     rows = []
+    sources = set()
     fmt = '${binary:Package}\t${Version}\t${source:Package}\t${source:Version}\n'
     for package in sorted(packages):
-        rows.append(subprocess.check_output(['dpkg-query', '-W', '-f=' + fmt, package], text=True))
+        row = subprocess.check_output(
+            ['dpkg-query', '-W', '-f=' + fmt, package], text=True
+        )
+        rows.append(row)
+        fields = row.rstrip('\n').split('\t')
+        sources.add((fields[2], fields[3]))
         notice = Path('/usr/share/doc') / package.split(':')[0] / 'copyright'
         if not notice.is_file():
             raise RuntimeError('Missing copyright notice: ' + package)
@@ -52,10 +59,21 @@ def collect(appdir, destination):
         source = Path('/usr/share/common-licenses') / name
         if source.is_file():
             shutil.copyfile(source, common / name)
+    source_links = '\n'.join(
+        'https://launchpad.net/ubuntu/+source/'
+        + urllib.parse.quote(name, safe='')
+        + '/'
+        + urllib.parse.quote(version, safe='')
+        for name, version in sorted(sources)
+    )
     (destination / 'BUILD-INFO.txt').write_text(
-        'Commit: ' + os.environ.get('GITHUB_SHA', 'unknown')
+        'Application: 1.0.0\nCommit: ' + os.environ.get('GITHUB_SHA', 'unknown')
         + '\nUbuntu packages owning deployed shared libraries (not the build environment):\n'
-        + 'Binary package\tVersion\tSource package\tSource version\n' + ''.join(rows))
+        + 'Binary package\tVersion\tSource package\tSource version\n'
+        + ''.join(rows)
+        + '\nExact Ubuntu source package pages:\n'
+        + source_links
+        + '\n')
     print(f'Collected notices for {len(packages)} packages owning {len(libraries)} deployed libraries')
 
 

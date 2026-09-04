@@ -35,9 +35,13 @@ Qt Base source archive is emitted as a separate build artifact for publication.
 Microsoft runtime files retain Microsoft's terms; they are not covered by the
 application's GPL license.
 
-Linux packages include Ubuntu copyright files and a package/version inventory.
-This inventory intentionally includes build dependencies as well as runtime
-packages; it does not assert that every listed package is inside the AppImage.
+The Linux AppImage includes Ubuntu copyright notices for the shared libraries
+actually deployed in AppDir, with package/source versions and referenced common
+license texts. These are retained inside the AppImage at
+`usr/share/doc/btc-purchase-tracker/` (accessible after `--appimage-extract`).
+The download does not duplicate that license directory outside the AppImage.
+The inventory covers Ubuntu shared libraries; it is not an inventory of the
+AppImage launcher/runtime or of statically embedded third-party code.
 
 ## Release maintainer check
 

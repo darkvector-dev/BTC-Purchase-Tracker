@@ -209,13 +209,6 @@ protected:
             QPen avgPen(avgColor, 1.5, Qt::DashLine);
             painter.setPen(avgPen);
             painter.drawLine(QPointF(plot.left(), avgY), QPointF(plot.right(), avgY));
-
-            painter.setPen(textColor);
-            painter.drawText(
-                QRectF(plot.left() + 6, avgY - 20, plot.width() - 12, 18),
-                Qt::AlignRight | Qt::AlignVCenter,
-                L("Media ", "Average ") + AppCurrency::formatMajor(m_averagePrice, m_currency, 0) + "/BTC"
-            );
         }
 
         // Curva cronologica degli acquisti.
@@ -237,6 +230,38 @@ protected:
         for (int i = 0; i < m_points.size(); ++i) {
             const QPointF point(xForIndex(i), yForPrice(m_points[i].price));
             painter.drawEllipse(point, 4.0, 4.0);
+        }
+
+        // La curva può attraversare la linea media: il testo viene quindi
+        // disegnato per ultimo su un fondo opaco, così rimane sempre leggibile.
+        if (m_averagePrice > 0.0) {
+            const double avgY = yForPrice(m_averagePrice);
+            const QString averageLabel =
+                L("Media ", "Average ")
+                + AppCurrency::formatMajor(m_averagePrice, m_currency, 0)
+                + "/BTC";
+
+            const QFontMetrics averageFm(painter.font());
+            const double labelWidth = averageFm.horizontalAdvance(averageLabel) + 12.0;
+            const double labelHeight = averageFm.height() + 6.0;
+            const double labelX = plot.right() - labelWidth - 4.0;
+            const double labelY = qBound(
+                plot.top() + 2.0,
+                avgY - labelHeight - 2.0,
+                plot.bottom() - labelHeight - 2.0
+            );
+            const QRectF labelBox(labelX, labelY, labelWidth, labelHeight);
+
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(backgroundColor);
+            painter.drawRoundedRect(labelBox, 3.0, 3.0);
+
+            painter.setPen(textColor);
+            painter.drawText(
+                labelBox.adjusted(6.0, 3.0, -6.0, -3.0),
+                Qt::AlignCenter,
+                averageLabel
+            );
         }
 
         // Indicatore interattivo: linea verticale rossa che segue il mouse.

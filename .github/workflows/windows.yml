@@ -41,6 +41,13 @@ jobs:
             --config Release `
             --parallel 2
 
+      - name: Test
+        shell: pwsh
+        run: |
+          ctest --test-dir build-windows `
+            -C Release `
+            --output-on-failure
+
       - name: Create portable folder
         shell: pwsh
         run: |
@@ -56,7 +63,7 @@ jobs:
 
           windeployqt `
             --release `
-            --compiler-runtime `
+            --no-compiler-runtime `
             "$packageDir\BTC-Purchase-Tracker.exe"
 
           if (Test-Path "LICENSE") {
@@ -83,12 +90,29 @@ jobs:
           Copy-Item "licenses" "$packageDir\licenses" -Recurse
           $qtVersion = (qmake -query QT_VERSION).Trim()
           if ($qtVersion -notmatch '^6\.8\.\d+$') { throw "Unexpected Qt version: $qtVersion" }
-          $sourceName = "qtbase-everywhere-src-$qtVersion.tar.xz"
-          $sourceUrl = "https://download.qt.io/archive/qt/6.8/$qtVersion/submodules/$sourceName"
-          Invoke-WebRequest $sourceUrl -OutFile "dist\$sourceName"
-          python scripts/collect-qt-notices.py "dist\$sourceName" "$packageDir\licenses\qtbase"
-          if ($LASTEXITCODE -ne 0) { throw "Qt notice collection failed" }
-          @("Application: 1.0.0", "Commit: $env:GITHUB_SHA", "Qt: $qtVersion", "Qt Base source: $sourceName", "Upstream: $sourceUrl") |
+          $modules = @("qtbase", "qtsvg")
+          $buildInfo = @(
+            "Application: 1.0.0",
+            "Commit: $env:GITHUB_SHA",
+            "Qt: $qtVersion",
+            "Microsoft Visual C++ runtime: install the official x64 Redistributable if absent"
+          )
+
+          foreach ($module in $modules) {
+            $sourceName = "${module}-everywhere-src-${qtVersion}.tar.xz"
+            $sourceUrl = "https://download.qt.io/archive/qt/6.8/$qtVersion/submodules/$sourceName"
+            Invoke-WebRequest $sourceUrl -OutFile "dist\$sourceName"
+            python scripts/collect-qt-notices.py `
+              "dist\$sourceName" `
+              "$packageDir\licenses\$module"
+            if ($LASTEXITCODE -ne 0) {
+              throw "Qt notice collection failed for $module"
+            }
+            $buildInfo += "Qt source: $sourceName"
+            $buildInfo += "Upstream: $sourceUrl"
+          }
+
+          $buildInfo |
             Set-Content "$packageDir\BUILD-INFO.txt" -Encoding utf8
 
       - name: Create portable ZIP
@@ -115,6 +139,15 @@ jobs:
           path: |
             dist/BTC-Purchase-Tracker-1.0.0-Windows-x64.zip
             dist/BTC-Purchase-Tracker-1.0.0-Windows-x64.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Windows dependency sources
+        uses: actions/upload-artifact@v4
+        with:
+          name: BTC-Purchase-Tracker-1.0.0-Windows-dependency-sources
+          path: |
             dist/qtbase-everywhere-src-*.tar.xz
+            dist/qtsvg-everywhere-src-*.tar.xz
           if-no-files-found: error
           retention-days: 30

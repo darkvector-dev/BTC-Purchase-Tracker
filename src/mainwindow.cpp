@@ -46,6 +46,7 @@
 #include <QStatusBar>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QStringList>
 #include <QTableWidget>
 #include <QTextDocument>
 #include <QTextStream>
@@ -65,6 +66,12 @@ QString L(const char *italian, const char *english) {
 }
 }
 
+struct PurchaseChartPoint {
+    QDate date;
+    double price{};
+    qint64 amountCents{};
+};
+
 class PurchasePriceChart : public QWidget {
 public:
     explicit PurchasePriceChart(QWidget *parent = nullptr)
@@ -75,11 +82,11 @@ public:
         setMouseTracking(true);
     }
 
-    void setData(QVector<QPair<QDate, double>> points, double averagePrice) {
-        std::sort(points.begin(), points.end(),
-                  [](const auto &a, const auto &b) {
-                      return a.first < b.first;
-                  });
+    void setData(QVector<PurchaseChartPoint> points, double averagePrice) {
+        std::stable_sort(points.begin(), points.end(),
+                         [](const auto &a, const auto &b) {
+                             return a.date < b.date;
+                         });
         m_points = std::move(points);
         m_averagePrice = averagePrice;
         update();
@@ -122,12 +129,12 @@ protected:
         if (plot.width() <= 1 || plot.height() <= 1)
             return;
 
-        double minPrice = m_points.first().second;
-        double maxPrice = m_points.first().second;
+        double minPrice = m_points.first().price;
+        double maxPrice = m_points.first().price;
 
         for (const auto &point : m_points) {
-            minPrice = qMin(minPrice, point.second);
-            maxPrice = qMax(maxPrice, point.second);
+            minPrice = qMin(minPrice, point.price);
+            maxPrice = qMax(maxPrice, point.price);
         }
 
         if (m_averagePrice > 0.0) {
@@ -166,8 +173,8 @@ protected:
             );
         }
 
-        const qint64 firstDay = m_points.first().first.toJulianDay();
-        const qint64 lastDay = m_points.last().first.toJulianDay();
+        const qint64 firstDay = m_points.first().date.toJulianDay();
+        const qint64 lastDay = m_points.last().date.toJulianDay();
         const bool sameDay = firstDay == lastDay;
 
         auto xForIndex = [&](int index) -> double {
@@ -180,7 +187,7 @@ protected:
                     * plot.width();
             }
 
-            const qint64 day = m_points[index].first.toJulianDay();
+            const qint64 day = m_points[index].date.toJulianDay();
             return plot.left()
                 + (static_cast<double>(day - firstDay)
                    / static_cast<double>(lastDay - firstDay))
@@ -214,7 +221,7 @@ protected:
         // Curva cronologica degli acquisti.
         QPainterPath path;
         for (int i = 0; i < m_points.size(); ++i) {
-            const QPointF point(xForIndex(i), yForPrice(m_points[i].second));
+            const QPointF point(xForIndex(i), yForPrice(m_points[i].price));
             if (i == 0)
                 path.moveTo(point);
             else
@@ -228,7 +235,7 @@ protected:
         painter.setBrush(lineColor);
         painter.setPen(QPen(backgroundColor, 1.5));
         for (int i = 0; i < m_points.size(); ++i) {
-            const QPointF point(xForIndex(i), yForPrice(m_points[i].second));
+            const QPointF point(xForIndex(i), yForPrice(m_points[i].price));
             painter.drawEllipse(point, 4.0, 4.0);
         }
 
@@ -249,10 +256,16 @@ protected:
                 }
             }
 
-            const QPointF nearestPoint(
-                xForIndex(nearestIndex),
-                yForPrice(m_points[nearestIndex].second)
-            );
+            const QDate hoveredDate = m_points[nearestIndex].date;
+            QVector<int> sameDayIndexes;
+            qint64 dailyTotalCents = 0;
+
+            for (int i = 0; i < m_points.size(); ++i) {
+                if (m_points[i].date == hoveredDate) {
+                    sameDayIndexes.append(i);
+                    dailyTotalCents += m_points[i].amountCents;
+                }
+            }
 
             QColor hoverColor = Qt::red;
             hoverColor.setAlpha(210);
@@ -265,18 +278,51 @@ protected:
 
             painter.setBrush(hoverColor);
             painter.setPen(QPen(backgroundColor, 2.0));
-            painter.drawEllipse(nearestPoint, 6.0, 6.0);
+            for (const int index : sameDayIndexes) {
+                const QPointF point(
+                    xForIndex(index),
+                    yForPrice(m_points[index].price)
+                );
+                painter.drawEllipse(point, 6.0, 6.0);
+            }
 
-            const QString info =
-                m_points[nearestIndex].first.toString("dd/MM/yyyy")
-                + "   "
-                + AppCurrency::formatMajor(m_points[nearestIndex].second, m_currency, 2)
-                + "/BTC";
+            QStringList infoLines;
+            if (sameDayIndexes.size() == 1) {
+                const int index = sameDayIndexes.first();
+                infoLines.append(
+                    hoveredDate.toString("dd/MM/yyyy")
+                    + "   "
+                    + AppCurrency::formatMoney(m_points[index].amountCents, m_currency)
+                    + "   "
+                    + AppCurrency::formatMajor(m_points[index].price, m_currency, 2)
+                    + "/BTC"
+                );
+            } else {
+                infoLines.append(hoveredDate.toString("dd/MM/yyyy"));
+
+                for (const int index : sameDayIndexes) {
+                    infoLines.append(
+                        AppCurrency::formatMoney(m_points[index].amountCents, m_currency)
+                        + "  —  "
+                        + AppCurrency::formatMajor(m_points[index].price, m_currency, 2)
+                        + "/BTC"
+                    );
+                }
+
+                infoLines.append(
+                    L("Totale giorno: ", "Daily total: ")
+                    + AppCurrency::formatMoney(dailyTotalCents, m_currency)
+                );
+            }
 
             const QFontMetrics fm(painter.font());
-            const int textWidth = fm.horizontalAdvance(info);
+            int textWidth = 0;
+            for (const QString &line : infoLines)
+                textWidth = qMax(textWidth, fm.horizontalAdvance(line));
+
             const int boxWidth = textWidth + 18;
-            const int boxHeight = fm.height() + 12;
+            const int lineHeight = fm.lineSpacing();
+            const int boxHeight = infoLines.size() * lineHeight + 12;
 
             double boxX = hoverX + 10;
             if (boxX + boxWidth > plot.right())
@@ -292,17 +338,25 @@ protected:
             painter.drawRoundedRect(infoBox, 5, 5);
 
             painter.setPen(palette().color(QPalette::ToolTipText));
-            painter.drawText(
-                infoBox.adjusted(9, 5, -9, -5),
-                Qt::AlignCenter,
-                info
-            );
+            const QRectF textBox = infoBox.adjusted(9, 6, -9, -6);
+            for (int i = 0; i < infoLines.size(); ++i) {
+                painter.drawText(
+                    QRectF(
+                        textBox.left(),
+                        textBox.top() + i * lineHeight,
+                        textBox.width(),
+                        lineHeight
+                    ),
+                    i == 0 ? Qt::AlignCenter : Qt::AlignLeft,
+                    infoLines[i]
+                );
+            }
         }
 
         // Date: prima, centrale (se utile), ultima.
         painter.setPen(mutedColor);
-        const QString firstLabel = m_points.first().first.toString("dd/MM/yy");
-        const QString lastLabel = m_points.last().first.toString("dd/MM/yy");
+        const QString firstLabel = m_points.first().date.toString("dd/MM/yy");
+        const QString lastLabel = m_points.last().date.toString("dd/MM/yy");
 
         painter.drawText(
             QRectF(plot.left(), plot.bottom() + 8, 90, 20),
@@ -315,7 +369,7 @@ protected:
             painter.drawText(
                 QRectF(plot.center().x() - 50, plot.bottom() + 8, 100, 20),
                 Qt::AlignCenter,
-                m_points[middle].first.toString("dd/MM/yy")
+                m_points[middle].date.toString("dd/MM/yy")
             );
         }
 
@@ -351,7 +405,7 @@ protected:
     }
 
 private:
-    QVector<QPair<QDate, double>> m_points;
+    QVector<PurchaseChartPoint> m_points;
     double m_averagePrice{};
     AppCurrency::Currency m_currency{AppCurrency::Currency::Euro};
     double m_hoverX{};
@@ -1548,7 +1602,7 @@ void MainWindow::refresh() {
         m_averagePrice->setProperty("clipboardValue", QString());
     }
 
-    QVector<QPair<QDate, double>> chartPoints;
+    QVector<PurchaseChartPoint> chartPoints;
     chartPoints.reserve(rows.size());
 
     for (const auto &p : rows) {
@@ -1559,9 +1613,11 @@ void MainWindow::refresh() {
             static_cast<long double>(p.euroCents) * 1000000.0L /
             static_cast<long double>(p.sats);
 
-        chartPoints.append(
-            qMakePair(p.date, static_cast<double>(purchasePrice))
-        );
+        chartPoints.append({
+            p.date,
+            static_cast<double>(purchasePrice),
+            p.euroCents
+        });
     }
 
     if (m_priceChart)

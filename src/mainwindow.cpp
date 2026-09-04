@@ -222,6 +222,8 @@ protected:
         }
 
         painter.setPen(QPen(lineColor, 2.2));
+        // Traccia solo la curva: il riempimento coprirebbe la griglia.
+        painter.setBrush(Qt::NoBrush);
         if (m_points.size() > 1)
             painter.drawPath(path);
 

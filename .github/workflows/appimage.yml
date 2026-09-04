@@ -50,6 +50,15 @@ jobs:
           rm -rf AppDir
           DESTDIR="$PWD/AppDir" cmake --install build-appimage
 
+      - name: Collect license notices
+        run: |
+          docdir="AppDir/usr/share/doc/btc-purchase-tracker"
+          mkdir -p "$docdir/licenses/ubuntu"
+          cp LICENSE "$docdir/LICENSE.txt"
+          cp README.md THIRD_PARTY.md "$docdir/"
+          cp licenses/*.txt "$docdir/licenses/"
+          python3 scripts/collect-ubuntu-notices.py "$docdir"
+
       - name: Download linuxdeploy tools
         run: |
           mkdir -p tools
@@ -99,12 +108,13 @@ jobs:
           chmod +x \
             dist/BTC-Purchase-Tracker-1.0.0-x86_64.AppImage
 
-          sha256sum \
-            dist/BTC-Purchase-Tracker-1.0.0-x86_64.AppImage \
-            > dist/BTC-Purchase-Tracker-1.0.0-x86_64.AppImage.sha256
+          (cd dist && sha256sum BTC-Purchase-Tracker-1.0.0-x86_64.AppImage \
+            > BTC-Purchase-Tracker-1.0.0-x86_64.AppImage.sha256)
 
           cp LICENSE dist/LICENSE.txt
-          cp README.md dist/README.md
+          cp README.md THIRD_PARTY.md dist/
+          cp -r AppDir/usr/share/doc/btc-purchase-tracker/licenses dist/
+          cp AppDir/usr/share/doc/btc-purchase-tracker/BUILD-INFO.txt dist/
 
           file \
             dist/BTC-Purchase-Tracker-1.0.0-x86_64.AppImage
@@ -121,5 +131,8 @@ jobs:
             dist/BTC-Purchase-Tracker-1.0.0-x86_64.AppImage.sha256
             dist/LICENSE.txt
             dist/README.md
+            dist/THIRD_PARTY.md
+            dist/licenses/
+            dist/BUILD-INFO.txt
           if-no-files-found: error
           retention-days: 30

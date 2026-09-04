@@ -75,6 +75,22 @@ jobs:
             throw "Packaging incompleto: manca sqldrivers\qsqlite.dll"
           }
 
+      - name: Collect Qt notices and matching sources
+        shell: pwsh
+        run: |
+          $packageDir = "dist\BTC-Purchase-Tracker"
+          Copy-Item "THIRD_PARTY.md" "$packageDir\THIRD_PARTY.md"
+          Copy-Item "licenses" "$packageDir\licenses" -Recurse
+          $qtVersion = (qmake -query QT_VERSION).Trim()
+          if ($qtVersion -notmatch '^6\.8\.\d+$') { throw "Unexpected Qt version: $qtVersion" }
+          $sourceName = "qtbase-everywhere-src-$qtVersion.tar.xz"
+          $sourceUrl = "https://download.qt.io/archive/qt/6.8/$qtVersion/submodules/$sourceName"
+          Invoke-WebRequest $sourceUrl -OutFile "dist\$sourceName"
+          python scripts/collect-qt-notices.py "dist\$sourceName" "$packageDir\licenses\qtbase"
+          if ($LASTEXITCODE -ne 0) { throw "Qt notice collection failed" }
+          @("Application: 1.0.0", "Commit: $env:GITHUB_SHA", "Qt: $qtVersion", "Qt Base source: $sourceName", "Upstream: $sourceUrl") |
+            Set-Content "$packageDir\BUILD-INFO.txt" -Encoding utf8
+
       - name: Create portable ZIP
         shell: pwsh
         run: |
@@ -99,5 +115,6 @@ jobs:
           path: |
             dist/BTC-Purchase-Tracker-1.0.0-Windows-x64.zip
             dist/BTC-Purchase-Tracker-1.0.0-Windows-x64.zip.sha256
+            dist/qtbase-everywhere-src-*.tar.xz
           if-no-files-found: error
           retention-days: 30

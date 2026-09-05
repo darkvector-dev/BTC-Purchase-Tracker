@@ -1459,18 +1459,6 @@ void MainWindow::showAbout() {
     thanks->setWordWrap(true);
     thanks->setAlignment(Qt::AlignCenter);
 
-    auto *contact = new QLabel(
-        L("Contatto: ", "Contact: ")
-        + QStringLiteral("<a href=\"mailto:irql_not_less_or_equal@protonmail.com\">"
-                         "irql_not_less_or_equal@protonmail.com"
-                         "</a>"),
-        &dialog
-    );
-    contact->setTextFormat(Qt::RichText);
-    contact->setTextInteractionFlags(Qt::TextBrowserInteraction);
-    contact->setOpenExternalLinks(true);
-    contact->setAlignment(Qt::AlignCenter);
-
     auto *disclaimer = new QLabel(
         L(
             "BTC Purchase Tracker non è un wallet e non fornisce consulenza finanziaria.",
@@ -1491,7 +1479,6 @@ void MainWindow::showAbout() {
     layout->addWidget(description);
     layout->addSpacing(4);
     layout->addWidget(thanks);
-    layout->addWidget(contact);
     layout->addSpacing(4);
     layout->addWidget(disclaimer);
     layout->addSpacing(4);

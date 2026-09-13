@@ -1,11 +1,13 @@
 #pragma once
 
 #include "database.h"
+#include "searchfilter.h"
 #include <QMainWindow>
 
 class QLabel;
 class QTableWidget;
 class QComboBox;
+class QLineEdit;
 class QPushButton;
 class QMenu;
 class QAction;
@@ -44,10 +46,15 @@ private:
     void applyLanguage();
     void changeLanguage(bool english);
     void refresh();
+    void updateSearchPlaceholder();
     void restoreUiState();
     void saveUiState() const;
     qint64 selectedId() const;
     Purchase selectedPurchase() const;
+    QVector<Purchase> filteredPurchases(
+        const QVector<Purchase> &allRows,
+        int selectedYear
+    ) const;
     QString chooseDatabaseFolder(const QString &title, const QString &initial = QString());
 
     Database m_db;
@@ -67,7 +74,12 @@ private:
     QLabel *m_cardAverageCaption{};
     QLabel *m_cardMonthlyAverageCaption{};
     QLabel *m_filterLabel{};
+    QLabel *m_searchLabel{};
+    QLabel *m_resultsLabel{};
     QLabel *m_chartTitle{};
+
+    QComboBox *m_searchMode{};
+    QLineEdit *m_searchField{};
 
     QPushButton *m_addButton{};
     QPushButton *m_editButton{};

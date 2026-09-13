@@ -4,8 +4,8 @@
 
 It is designed to work without accounts, cloud services or wallet connections: your purchase history is stored in a local SQLite database under your control.
 
-**Version:** 1.0.0  
-**Platforms:** Windows x64 · Linux x86_64  
+**Version:** 1.1.0<br>
+**Platforms:** Windows x64 · Linux x86_64<br>
 **Interface languages:** Italian · English  
 **Currencies:** EUR · USD
 
@@ -22,6 +22,8 @@ It is designed to work without accounts, cloud services or wallet connections: y
 - Inspect all purchases on the same date and their daily spending total
 - View monthly spending on a vertical bar chart
 - Sort purchase data directly from the table
+- Search purchases by date, exchange, amount, BTC / satoshi or TX / transaction ID
+- Combine live search with the year filter and recalculate visible totals, averages and charts
 - Click summary values to copy them to the clipboard
 - Import purchases from CSV with validation and duplicate detection
 - Export the complete purchase history to CSV
@@ -88,6 +90,19 @@ Each purchase can contain:
 - TX / transaction ID
 
 BTC and satoshi remain mathematically consistent when entering or importing data.
+
+## Search and filters
+
+The year filter can be combined with a live search across all purchase fields or
+limited to date, exchange, amount, BTC / satoshi or TX / transaction ID.
+
+Search results immediately update the visible table, totals, average purchase
+price, monthly DCA average and charts. Press `Ctrl+F` to focus the search field;
+clear the field to return to the complete view for the selected year.
+
+Dates can be searched using a complete date, month/year or year. Amount searches
+use the permanent EUR or USD currency of the active database. BTC values accept
+either decimal notation or whole satoshi values.
 
 ## CSV import
 
@@ -184,13 +199,13 @@ Download the checksum file alongside the corresponding release asset. The Window
 On Linux, place both files in the same folder and run:
 
 ```bash
-sha256sum -c BTC-Purchase-Tracker-1.0.0-x86_64.AppImage.sha256
+sha256sum -c BTC-Purchase-Tracker-1.1.0-x86_64.AppImage.sha256
 ```
 
 On Windows, calculate the ZIP hash in PowerShell and compare it with the `.sha256` file:
 
 ```powershell
-Get-FileHash .\BTC-Purchase-Tracker-1.0.0-Windows-x64.zip -Algorithm SHA256
+Get-FileHash .\BTC-Purchase-Tracker-1.1.0-Windows-x64.zip -Algorithm SHA256
 ```
 
 A matching checksum checks file integrity against that checksum; it is not a publisher signature.

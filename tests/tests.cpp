@@ -1,6 +1,7 @@
 #include "csvutils.h"
 #include "database.h"
 #include "monthlystats.h"
+#include "searchfilter.h"
 
 #include <QCoreApplication>
 #include <QDate>
@@ -234,6 +235,52 @@ void testMonthlyStatistics() {
     expect(empty.months.isEmpty() && empty.averageCents == 0,
            QStringLiteral("empty history has no monthly average"));
 }
+
+void testPurchaseSearch() {
+    Purchase p = purchase(QStringLiteral("AbC123-Transaction"), 12345, 100000);
+    p.date = QDate(2026, 9, 15);
+    p.site = QStringLiteral("Kraken Pro");
+
+    using Field = PurchaseSearch::Field;
+
+    expect(PurchaseSearch::matches(p, QString(), Field::All, AppCurrency::Currency::Euro),
+           QStringLiteral("empty search matches every purchase"));
+    expect(PurchaseSearch::matches(p, QStringLiteral("15/09/2026"), Field::Date, AppCurrency::Currency::Euro),
+           QStringLiteral("search full localized date"));
+    expect(PurchaseSearch::matches(p, QStringLiteral("09/2026"), Field::Date, AppCurrency::Currency::Euro),
+           QStringLiteral("search month and year"));
+    expect(PurchaseSearch::matches(p, QStringLiteral("2026-09-15"), Field::Date, AppCurrency::Currency::Euro),
+           QStringLiteral("search ISO date"));
+    expect(PurchaseSearch::matches(p, QStringLiteral("15.09.2026"), Field::Date, AppCurrency::Currency::Euro),
+           QStringLiteral("search date with dots"));
+    expect(PurchaseSearch::matches(p, QStringLiteral("krak"), Field::Site, AppCurrency::Currency::Euro),
+           QStringLiteral("search exchange case-insensitively"));
+    expect(PurchaseSearch::matches(p, QStringLiteral("123,45"), Field::Amount, AppCurrency::Currency::Euro),
+           QStringLiteral("search EUR amount with comma"));
+    expect(PurchaseSearch::matches(p, QStringLiteral("123.45"), Field::Amount, AppCurrency::Currency::Euro),
+           QStringLiteral("search EUR amount with dot"));
+    expect(PurchaseSearch::matches(p, QStringLiteral("0,00100000"), Field::Bitcoin, AppCurrency::Currency::Euro),
+           QStringLiteral("search BTC value"));
+    expect(PurchaseSearch::matches(p, QStringLiteral("100000 sats"), Field::Bitcoin, AppCurrency::Currency::Euro),
+           QStringLiteral("search satoshi value"));
+    expect(PurchaseSearch::matches(p, QStringLiteral("c123"), Field::Transaction, AppCurrency::Currency::Euro),
+           QStringLiteral("search partial TX ID case-insensitively"));
+    expect(PurchaseSearch::matches(p, QStringLiteral("Kraken"), Field::All, AppCurrency::Currency::Euro),
+           QStringLiteral("all-fields search finds exchange"));
+    expect(PurchaseSearch::matches(p, QStringLiteral("123,45"), Field::All, AppCurrency::Currency::Euro),
+           QStringLiteral("all-fields search finds amount"));
+    expect(PurchaseSearch::matches(p, QStringLiteral("100000 sats"), Field::All, AppCurrency::Currency::Euro),
+           QStringLiteral("all-fields search finds satoshi"));
+    expect(PurchaseSearch::matches(p, QStringLiteral("transaction"), Field::All, AppCurrency::Currency::Euro),
+           QStringLiteral("all-fields search finds partial transaction ID"));
+    expect(!PurchaseSearch::matches(p, QStringLiteral("Coinbase"), Field::All, AppCurrency::Currency::Euro),
+           QStringLiteral("unrelated search does not match"));
+
+    Purchase usd = p;
+    usd.euroCents = 9876;
+    expect(PurchaseSearch::matches(usd, QStringLiteral("$98.76"), Field::Amount, AppCurrency::Currency::UsDollar),
+           QStringLiteral("search USD amount"));
+}
 }
 
 int main(int argc, char *argv[]) {
@@ -245,6 +292,7 @@ int main(int argc, char *argv[]) {
         testLegacyDatabaseCompatibility(temporaryDir.path());
         testCsvValidation(temporaryDir.path());
         testMonthlyStatistics();
+        testPurchaseSearch();
     }
     if (failures == 0)
         QTextStream(stdout) << "All tests passed.\n";

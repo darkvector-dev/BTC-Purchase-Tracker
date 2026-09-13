@@ -5,6 +5,7 @@
 #include "language.h"
 #include "monthlystats.h"
 #include "purchasedialog.h"
+#include "searchfilter.h"
 
 #include <QAction>
 #include <QActionGroup>
@@ -25,11 +26,13 @@
 #include <QHeaderView>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QLocale>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMouseEvent>
+#include <QKeySequence>
 #include <QPdfWriter>
 #include <QPageLayout>
 #include <QPageSize>
@@ -981,10 +984,30 @@ void MainWindow::buildUi() {
     m_yearFilter->setMinimumWidth(150);
     m_monthlySummaryButton = new QPushButton(this);
 
+    m_searchLabel = new QLabel(this);
+    QFont searchFont = m_searchLabel->font();
+    searchFont.setBold(true);
+    m_searchLabel->setFont(searchFont);
+
+    m_searchMode = new QComboBox(this);
+    m_searchMode->setMinimumWidth(125);
+
+    m_searchField = new QLineEdit(this);
+    m_searchField->setMinimumWidth(250);
+    m_searchField->setClearButtonEnabled(true);
+
+    m_resultsLabel = new QLabel(this);
+    m_resultsLabel->setMinimumWidth(125);
+    m_resultsLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+
     filterRow->addWidget(m_filterLabel);
     filterRow->addWidget(m_yearFilter);
     filterRow->addWidget(m_monthlySummaryButton);
     filterRow->addStretch();
+    filterRow->addWidget(m_searchLabel);
+    filterRow->addWidget(m_searchMode);
+    filterRow->addWidget(m_searchField);
+    filterRow->addWidget(m_resultsLabel);
     outer->addLayout(filterRow);
 
     auto *chartBox = new QFrame(this);
@@ -1089,6 +1112,23 @@ void MainWindow::buildUi() {
         refresh();
     });
 
+    connect(m_searchMode, &QComboBox::currentIndexChanged, this, [this](int) {
+        updateSearchPlaceholder();
+        refresh();
+    });
+
+    connect(m_searchField, &QLineEdit::textChanged, this, [this](const QString &) {
+        refresh();
+    });
+
+    auto *focusSearchAction = new QAction(this);
+    focusSearchAction->setShortcut(QKeySequence::Find);
+    addAction(focusSearchAction);
+    connect(focusSearchAction, &QAction::triggered, this, [this] {
+        m_searchField->setFocus();
+        m_searchField->selectAll();
+    });
+
     connect(m_table, &QTableWidget::cellDoubleClicked, this, [this](int, int){ editPurchase(); });
 
     applyLanguage();
@@ -1129,6 +1169,50 @@ void MainWindow::applyLanguage() {
     if (allYearsIndex >= 0)
         m_yearFilter->setItemText(allYearsIndex, L("Tutti gli anni", "All years"));
 
+    m_searchLabel->setText(L("Cerca:", "Search:"));
+    const int selectedSearchMode = m_searchMode->currentData().isValid()
+        ? m_searchMode->currentData().toInt()
+        : static_cast<int>(PurchaseSearch::Field::All);
+    {
+        QSignalBlocker blocker(m_searchMode);
+        m_searchMode->clear();
+        m_searchMode->addItem(
+            L("Tutto", "All"),
+            static_cast<int>(PurchaseSearch::Field::All)
+        );
+        m_searchMode->addItem(
+            L("Data", "Date"),
+            static_cast<int>(PurchaseSearch::Field::Date)
+        );
+        m_searchMode->addItem(
+            "Exchange",
+            static_cast<int>(PurchaseSearch::Field::Site)
+        );
+        m_searchMode->addItem(
+            L("Importo", "Amount"),
+            static_cast<int>(PurchaseSearch::Field::Amount)
+        );
+        m_searchMode->addItem(
+            "BTC / sats",
+            static_cast<int>(PurchaseSearch::Field::Bitcoin)
+        );
+        m_searchMode->addItem(
+            "TX / ID",
+            static_cast<int>(PurchaseSearch::Field::Transaction)
+        );
+        const int wantedIndex = m_searchMode->findData(selectedSearchMode);
+        m_searchMode->setCurrentIndex(wantedIndex >= 0 ? wantedIndex : 0);
+    }
+    m_searchMode->setToolTip(L(
+        "Scegli il campo in cui cercare",
+        "Choose the field to search"
+    ));
+    m_searchField->setToolTip(L(
+        "La ricerca si combina con il filtro dell'anno (Ctrl+F)",
+        "Search is combined with the year filter (Ctrl+F)"
+    ));
+    updateSearchPlaceholder();
+
     m_chartTitle->setText(L("ANDAMENTO PREZZO DI ACQUISTO", "PURCHASE PRICE TREND"));
     if (m_priceChart)
         m_priceChart->setCurrency(m_db.currency());
@@ -1168,6 +1252,55 @@ void MainWindow::applyLanguage() {
 
     if (!m_db.filePath().isEmpty())
         m_dbPath->setText("Database: " + m_db.filePath());
+}
+
+void MainWindow::updateSearchPlaceholder() {
+    if (!m_searchMode || !m_searchField)
+        return;
+
+    const auto field = static_cast<PurchaseSearch::Field>(
+        m_searchMode->currentData().toInt()
+    );
+
+    switch (field) {
+    case PurchaseSearch::Field::Date:
+        m_searchField->setPlaceholderText(L(
+            "es. 15/09/2026, 09/2026",
+            "e.g. 15/09/2026, 09/2026"
+        ));
+        break;
+    case PurchaseSearch::Field::Site:
+        m_searchField->setPlaceholderText(L(
+            "Nome dell'exchange",
+            "Exchange name"
+        ));
+        break;
+    case PurchaseSearch::Field::Amount:
+        m_searchField->setPlaceholderText(
+            m_db.currency() == AppCurrency::Currency::UsDollar
+                ? L("es. 100 oppure 100.00", "e.g. 100 or 100.00")
+                : L("es. 100 oppure 100,00", "e.g. 100 or 100.00")
+        );
+        break;
+    case PurchaseSearch::Field::Bitcoin:
+        m_searchField->setPlaceholderText(L(
+            "BTC decimali oppure satoshi interi",
+            "Decimal BTC or whole satoshi"
+        ));
+        break;
+    case PurchaseSearch::Field::Transaction:
+        m_searchField->setPlaceholderText(L(
+            "TX / ID completo o parziale",
+            "Full or partial TX / ID"
+        ));
+        break;
+    case PurchaseSearch::Field::All:
+        m_searchField->setPlaceholderText(L(
+            "Data, exchange, importo, BTC/sats o TX/ID",
+            "Date, exchange, amount, BTC/sats or TX/ID"
+        ));
+        break;
+    }
 }
 
 void MainWindow::changeLanguage(bool english) {
@@ -1431,7 +1564,7 @@ void MainWindow::showAbout() {
     title->setFont(titleFont);
     title->setAlignment(Qt::AlignCenter);
 
-    auto *version = new QLabel(L("Versione 1.0.0", "Version 1.0.0"), &dialog);
+    auto *version = new QLabel(L("Versione 1.1.0", "Version 1.1.0"), &dialog);
     version->setAlignment(Qt::AlignCenter);
 
     auto *description = new QLabel(
@@ -1524,20 +1657,38 @@ void MainWindow::refresh() {
 
     selectedYear = m_yearFilter->currentData().toInt();
 
-    QVector<Purchase> rows;
-    rows.reserve(allRows.size());
+    QVector<Purchase> rows = filteredPurchases(allRows, selectedYear);
 
     qint64 amountCents = 0;
     qint64 sats = 0;
 
-    for (const auto &p : allRows) {
-        if (selectedYear != 0 && p.date.year() != selectedYear)
-            continue;
-
-        rows.push_back(p);
+    for (const auto &p : rows) {
         amountCents += p.euroCents;
         sats += p.sats;
     }
+
+    int purchasesInSelectedYear = 0;
+    for (const auto &p : allRows) {
+        if (selectedYear == 0 || p.date.year() == selectedYear)
+            ++purchasesInSelectedYear;
+    }
+
+    const bool searchActive = m_searchField
+        && !m_searchField->text().trimmed().isEmpty();
+    const auto purchaseCountText = [](int count) {
+        if (AppLanguage::isEnglish())
+            return count == 1
+                ? QStringLiteral("1 purchase")
+                : QString("%1 purchases").arg(count);
+        return count == 1
+            ? QStringLiteral("1 acquisto")
+            : QString("%1 acquisti").arg(count);
+    };
+    m_resultsLabel->setText(searchActive
+        ? (AppLanguage::isEnglish()
+            ? QString("%1 of %2").arg(rows.size()).arg(purchaseCountText(purchasesInSelectedYear))
+            : QString("%1 di %2").arg(rows.size()).arg(purchaseCountText(purchasesInSelectedYear)))
+        : purchaseCountText(rows.size()));
 
     m_table->setSortingEnabled(false);
     m_table->setRowCount(rows.size());
@@ -1575,10 +1726,10 @@ void MainWindow::refresh() {
     m_totalSats->setText(CsvUtils::formatSats(sats) + " sats");
 
     const MonthlySummary monthlySummary = MonthlyStats::calculate(
-        allRows,
+        rows,
         selectedYear
     );
-    if (!monthlySummary.months.isEmpty()) {
+    if (!rows.isEmpty() && !monthlySummary.months.isEmpty()) {
         m_monthlyAverage->setText(
             CsvUtils::formatMoney(monthlySummary.averageCents, m_db.currency())
         );
@@ -1652,6 +1803,31 @@ void MainWindow::refresh() {
     );
 
     m_dbPath->setText("Database: " + m_db.filePath());
+}
+
+QVector<Purchase> MainWindow::filteredPurchases(
+    const QVector<Purchase> &allRows,
+    int selectedYear
+) const {
+    QVector<Purchase> filtered;
+    filtered.reserve(allRows.size());
+
+    const QString query = m_searchField
+        ? m_searchField->text().trimmed()
+        : QString();
+    const auto field = m_searchMode
+        ? static_cast<PurchaseSearch::Field>(m_searchMode->currentData().toInt())
+        : PurchaseSearch::Field::All;
+
+    for (const auto &purchase : allRows) {
+        if (selectedYear != 0 && purchase.date.year() != selectedYear)
+            continue;
+        if (!PurchaseSearch::matches(purchase, query, field, m_db.currency()))
+            continue;
+        filtered.push_back(purchase);
+    }
+
+    return filtered;
 }
 
 qint64 MainWindow::selectedId() const {
@@ -1879,7 +2055,8 @@ void MainWindow::showMonthlySummary() {
     const int selectedYear = m_yearFilter
         ? m_yearFilter->currentData().toInt()
         : 0;
-    const MonthlySummary summary = MonthlyStats::calculate(purchases, selectedYear);
+    const QVector<Purchase> filtered = filteredPurchases(purchases, selectedYear);
+    const MonthlySummary summary = MonthlyStats::calculate(filtered, selectedYear);
 
     QDialog dialog(this);
     dialog.setWindowTitle(L("Riepilogo mensile", "Monthly summary"));
@@ -1895,6 +2072,17 @@ void MainWindow::showMonthlySummary() {
         ? L("SPESA MENSILE — TUTTI GLI ANNI", "MONTHLY SPENDING — ALL YEARS")
         : L("SPESA MENSILE — %1", "MONTHLY SPENDING — %1").arg(selectedYear));
     layout->addWidget(title);
+
+    if (m_searchField && !m_searchField->text().trimmed().isEmpty()) {
+        auto *searchContext = new QLabel(
+            L("Ricerca attiva: ", "Active search: ")
+                + m_searchField->text().trimmed(),
+            &dialog
+        );
+        searchContext->setTextFormat(Qt::PlainText);
+        searchContext->setWordWrap(true);
+        layout->addWidget(searchContext);
+    }
 
     auto *scrollArea = new QScrollArea(&dialog);
     scrollArea->setFrameShape(QFrame::NoFrame);

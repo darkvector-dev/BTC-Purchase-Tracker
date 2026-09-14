@@ -196,18 +196,19 @@ No system-wide installation is required.
 
 ## SHA-256 verification
 
-Download the checksum file alongside the corresponding release asset. The Windows checksum covers the complete portable ZIP; the Linux checksum covers the AppImage.
+Download `checksums.txt` alongside the two release archives. The checksums cover the complete Windows and Linux ZIP files published on the GitHub Releases page.
 
-On Linux, place both files in the same folder and run:
+On Linux, place `checksums.txt` and the downloaded ZIP file or files in the same folder and run:
 
 ```bash
-sha256sum -c BTC-Purchase-Tracker-1.1.0-x86_64.AppImage.sha256
+sha256sum -c checksums.txt --ignore-missing
 ```
 
-On Windows, calculate the ZIP hash in PowerShell and compare it with the `.sha256` file:
+On Windows, calculate the hash of the downloaded ZIP in PowerShell using the corresponding command, then compare it with the value in `checksums.txt`:
 
 ```powershell
 Get-FileHash .\BTC-Purchase-Tracker-1.1.0-Windows-x64.zip -Algorithm SHA256
+Get-FileHash .\BTC-Purchase-Tracker-1.1.0-x86_64.zip -Algorithm SHA256
 ```
 
 A matching checksum checks file integrity against that checksum; it is not a publisher signature.

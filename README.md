@@ -170,7 +170,9 @@ Download the Windows ZIP archive, extract it and run:
 
 The Windows release is portable and does not require a traditional installer.
 
-Windows SmartScreen may display a warning for an unsigned application downloaded from the Internet.
+### Windows SmartScreen warning
+
+On Windows 10/11, Microsoft Defender SmartScreen may display a blue warning because the application is unsigned and has not yet built a recognized reputation. If you downloaded it from the official GitHub Releases page, click **More info** and then **Run anyway**. The application is not code-signed because trusted code-signing requires a verified publisher identity, which conflicts with the project's anonymous, privacy-focused nature. The source code is publicly available for review, and the published SHA-256 checksums can be used to verify that downloaded files match the official release.
 
 The archive does not bundle the Microsoft Visual C++ runtime. If the application does not start or Windows reports a missing runtime DLL, install the latest official **Microsoft Visual C++ Redistributable x64** from [Microsoft's download page](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170), then start the application again.
 

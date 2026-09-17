@@ -41,6 +41,9 @@ jobs:
             --config Release `
             --parallel 2
 
+      - name: Test
+        run: ctest --test-dir build-windows -C Release --output-on-failure
+
       - name: Create portable folder
         shell: pwsh
         run: |
@@ -85,7 +88,7 @@ jobs:
           if ($qtVersion -notmatch '^6\.8\.\d+$') { throw "Unexpected Qt version: $qtVersion" }
           $modules = @("qtbase", "qtsvg")
           $buildInfo = @(
-            "Application: 1.1.0",
+            "Application: 1.1.1",
             "Commit: $env:GITHUB_SHA",
             "Qt: $qtVersion",
             "Microsoft Visual C++ runtime: install the official x64 Redistributable if absent"
@@ -111,7 +114,7 @@ jobs:
       - name: Create portable ZIP
         shell: pwsh
         run: |
-          $version = "1.1.0"
+          $version = "1.1.1"
           $zip = "dist\BTC-Purchase-Tracker-$version-Windows-x64.zip"
 
           Compress-Archive `
@@ -128,17 +131,17 @@ jobs:
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BTC-Purchase-Tracker-1.1.0-Windows-x64
+          name: BTC-Purchase-Tracker-1.1.1-Windows-x64
           path: |
-            dist/BTC-Purchase-Tracker-1.1.0-Windows-x64.zip
-            dist/BTC-Purchase-Tracker-1.1.0-Windows-x64.zip.sha256
+            dist/BTC-Purchase-Tracker-1.1.1-Windows-x64.zip
+            dist/BTC-Purchase-Tracker-1.1.1-Windows-x64.zip.sha256
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload Windows dependency sources
         uses: actions/upload-artifact@v4
         with:
-          name: BTC-Purchase-Tracker-1.1.0-Windows-dependency-sources
+          name: BTC-Purchase-Tracker-1.1.1-Windows-dependency-sources
           path: |
             dist/qtbase-everywhere-src-*.tar.xz
             dist/qtsvg-everywhere-src-*.tar.xz

@@ -71,7 +71,7 @@ jobs:
       - name: Build AppImage
         env:
           APPIMAGE_EXTRACT_AND_RUN: "1"
-          VERSION: "1.1.0"
+          VERSION: "1.1.1"
         run: |
           export PATH="$PWD/tools:$PATH"
 
@@ -108,30 +108,30 @@ jobs:
           fi
 
           mv "$generated" \
-            dist/BTC-Purchase-Tracker-1.1.0-x86_64.AppImage
+            dist/BTC-Purchase-Tracker-1.1.1-x86_64.AppImage
 
           chmod +x \
-            dist/BTC-Purchase-Tracker-1.1.0-x86_64.AppImage
+            dist/BTC-Purchase-Tracker-1.1.1-x86_64.AppImage
 
-          (cd dist && sha256sum BTC-Purchase-Tracker-1.1.0-x86_64.AppImage \
-            > BTC-Purchase-Tracker-1.1.0-x86_64.AppImage.sha256)
+          (cd dist && sha256sum BTC-Purchase-Tracker-1.1.1-x86_64.AppImage \
+            > BTC-Purchase-Tracker-1.1.1-x86_64.AppImage.sha256)
 
           cp LICENSE dist/LICENSE.txt
           cp README.md THIRD_PARTY.md dist/
 
           file \
-            dist/BTC-Purchase-Tracker-1.1.0-x86_64.AppImage
+            dist/BTC-Purchase-Tracker-1.1.1-x86_64.AppImage
 
           cat \
-            dist/BTC-Purchase-Tracker-1.1.0-x86_64.AppImage.sha256
+            dist/BTC-Purchase-Tracker-1.1.1-x86_64.AppImage.sha256
 
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BTC-Purchase-Tracker-1.1.0-x86_64
+          name: BTC-Purchase-Tracker-1.1.1-x86_64
           path: |
-            dist/BTC-Purchase-Tracker-1.1.0-x86_64.AppImage
-            dist/BTC-Purchase-Tracker-1.1.0-x86_64.AppImage.sha256
+            dist/BTC-Purchase-Tracker-1.1.1-x86_64.AppImage
+            dist/BTC-Purchase-Tracker-1.1.1-x86_64.AppImage.sha256
             dist/LICENSE.txt
             dist/README.md
             dist/THIRD_PARTY.md

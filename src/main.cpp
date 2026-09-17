@@ -10,7 +10,7 @@ int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     QApplication::setOrganizationName("BTCPurchaseTracker");
     QApplication::setApplicationName("BTCPurchaseTracker");
-    QApplication::setApplicationVersion("1.1.0");
+    QApplication::setApplicationVersion("1.1.1");
 
     AppLanguage::load();
     DiagnosticLog::initialize();

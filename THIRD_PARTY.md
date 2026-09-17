@@ -45,3 +45,11 @@ package pages. The information is stored under
 The AppImage type-2 runtime identifies its own license, embedded dependencies,
 source revision and source locations through the `--appimage-help` and
 `--appimage-version` commands.
+
+## macOS package
+
+The macOS app dynamically links Qt Base and Qt SVG. Its `Contents/Resources/`
+directory contains the collected notices, license texts and `BUILD-INFO.txt`.
+The workflow emits the matching source archives separately, as on Windows.
+Use Finder’s Show Package Contents to inspect the app. Modified libraries or
+rebuilt apps may require a fresh local ad-hoc signature before execution.

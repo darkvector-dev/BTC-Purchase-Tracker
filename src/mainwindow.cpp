@@ -1208,9 +1208,9 @@ void MainWindow::applyLanguage() {
         "Choose the field to search"
     ));
     m_searchField->setToolTip(L(
-        "La ricerca si combina con il filtro dell'anno (Ctrl+F)",
-        "Search is combined with the year filter (Ctrl+F)"
-    ));
+        "La ricerca si combina con il filtro dell'anno (%1)",
+        "Search is combined with the year filter (%1)"
+    ).arg(QKeySequence(QKeySequence::Find).toString(QKeySequence::NativeText)));
     updateSearchPlaceholder();
 
     m_chartTitle->setText(L("ANDAMENTO PREZZO DI ACQUISTO", "PURCHASE PRICE TREND"));
@@ -1564,7 +1564,7 @@ void MainWindow::showAbout() {
     title->setFont(titleFont);
     title->setAlignment(Qt::AlignCenter);
 
-    auto *version = new QLabel(L("Versione 1.1.0", "Version 1.1.0"), &dialog);
+    auto *version = new QLabel(L("Versione 1.1.1", "Version 1.1.1"), &dialog);
     version->setAlignment(Qt::AlignCenter);
 
     auto *description = new QLabel(

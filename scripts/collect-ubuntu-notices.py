@@ -67,7 +67,7 @@ def collect(appdir, destination):
         for name, version in sorted(sources)
     )
     (destination / 'BUILD-INFO.txt').write_text(
-        'Application: 1.1.0\nCommit: ' + os.environ.get('GITHUB_SHA', 'unknown')
+        'Application: 1.1.1\nCommit: ' + os.environ.get('GITHUB_SHA', 'unknown')
         + '\nUbuntu packages owning deployed shared libraries (not the build environment):\n'
         + 'Binary package\tVersion\tSource package\tSource version\n'
         + ''.join(rows)

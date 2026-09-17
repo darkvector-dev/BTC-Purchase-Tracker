@@ -30,6 +30,10 @@ PurchaseDialog::PurchaseDialog(
     m_date = new QDateEdit(QDate::currentDate(), this);
     m_date->setCalendarPopup(true);
     m_date->setDisplayFormat("dd/MM/yyyy");
+    m_date->setToolTip(L(
+        "Date ammesse: dal 03/01/2009 (blocco genesi di Bitcoin) a oggi, inclusi.",
+        "Allowed dates: from 3 January 2009 (Bitcoin's genesis block) through today, inclusive."
+    ));
     m_site = new QLineEdit(this);
     m_amount = new QLineEdit(this);
     m_amount->setPlaceholderText(
@@ -129,6 +133,19 @@ void PurchaseDialog::validateAndAccept() {
     p.date = m_date->date();
     p.site = m_site->text().trimmed();
     p.txid = m_txid->text().trimmed();
+
+    // Validate on save (also if the dialog stays open across midnight).
+    // Do not clamp the editor: an old out-of-range record must remain visible
+    // until the user explicitly chooses a replacement date.
+    if (!p.date.isValid() || p.date < QDate(2009, 1, 3) || p.date > QDate::currentDate()) {
+        QMessageBox::warning(
+            this,
+            L("Data non valida", "Invalid date"),
+            L("La data deve essere compresa tra il 03/01/2009 (blocco genesi di Bitcoin) e oggi, inclusi.",
+              "The date must be between 3 January 2009 (Bitcoin's genesis block) and today, inclusive.")
+        );
+        return;
+    }
 
     if (p.site.isEmpty()) {
         QMessageBox::warning(

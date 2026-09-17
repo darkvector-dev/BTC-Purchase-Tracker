@@ -1,0 +1,26 @@
+BTC Purchase Tracker 1.1.1 — Mac Apple Silicon
+
+Requisiti: Mac con M1 o successivo, macOS 12 Monterey o successivo.
+Questa versione non è destinata ai Mac Intel.
+
+1. Trascina BTC Purchase Tracker in Applications (Applicazioni).
+2. Espelli il disco di installazione e apri l’app da Applicazioni.
+3. Scegli una cartella scrivibile per il database, ad esempio in Documenti.
+
+Qt e SQLite sono inclusi. Non serve installare altro.
+
+La versione non ha firma Developer ID né notarizzazione Apple.
+Se macOS blocca l’apertura perché lo sviluppatore non è verificato, dopo il
+primo tentativo apri Impostazioni di Sistema > Privacy e sicurezza > Apri
+comunque, solo se ti fidi della provenienza del file.
+Guida Apple: https://support.apple.com/it-it/102445
+
+Per cercare gli acquisti: Cmd+F.
+Per la prima prova usa dati di esempio o una copia del tuo database.
+Verifica inserimento, modifica, eliminazione, export CSV/PDF, import CSV,
+backup/ripristino e riapertura dell’app prima di usare il database principale.
+
+Apple Silicon Mac — English
+Drag the app into Applications, eject the disk image, then launch the app.
+macOS 12+ is required. The app is ad-hoc signed, without Developer ID or
+notarization. See README.md for Gatekeeper and checksum instructions.

@@ -184,6 +184,71 @@ void testCsvValidation(const QString &root) {
            QStringLiteral("import CSV row with blank TXID into database: %1").arg(error));
 }
 
+
+void testCsvExportTotals(const QString &root) {
+    int fixture = 0;
+    for (bool english : {false, true}) {
+        for (auto currency : {AppCurrency::Currency::Euro, AppCurrency::Currency::UsDollar}) {
+            for (QChar delimiter : {QChar(';'), QChar(','), QChar('\t')}) {
+                const QString name = QStringLiteral("/totals-%1").arg(++fixture);
+                Database db;
+                QString error;
+                expect(db.open(root + name + ".sqlite", &error), "open totals database: " + error);
+                expect(db.setCurrency(currency, &error), "set totals currency: " + error);
+                const bool usd = currency == AppCurrency::Currency::UsDollar;
+                const QStringList headers{
+                    english ? "Date" : "Data", english ? "Site / exchange" : "Sito / exchange",
+                    usd ? (english ? "USD spent" : "Dollari spesi (USD)")
+                        : (english ? "Euro spent" : "Euro spesi"),
+                    "BTC on-chain", "Satoshi", english ? "TX / Transaction ID" : "TX / ID transazione"
+                };
+                auto row = [&](const QStringList &values) {
+                    QStringList escaped;
+                    for (const QString &v : values) escaped << CsvUtils::csvEscape(v, delimiter);
+                    return escaped.join(delimiter) + '\n';
+                };
+                const QString amount = AppCurrency::plainAmount(12345, currency);
+                const QString btc = usd ? "0.00100000" : "0,00100000";
+                // Include the UTF-8 BOM and blank line emitted by Export CSV.
+                const QString contents = QString(QChar(0xFEFF)) + row(headers)
+                    + row({"03/01/2009", "Exchange", amount, btc, "100000", "tx-totals"})
+                    + '\n' + row({english ? "TOTALS" : "TOTALI", "", amount, btc, "100000", ""});
+                const QString path = root + name + ".csv";
+                expect(writeUtf8(path, contents), "write exported CSV fixture");
+                const auto imported = CsvUtils::importFile(path, db);
+                expect(imported.errors.isEmpty(), "totals summary must not cause errors: " + imported.errors.join("; "));
+                expect(imported.validRows.size() == 1 && imported.duplicateRows == 0,
+                       "summary must not become a purchase or duplicate");
+                expect(db.addPurchasesTransaction(imported.validRows, &error), "save imported purchases: " + error);
+                const auto totals = db.totals();
+                expect(totals.first == 12345 && totals.second == 100000, "import preserves totals without double counting");
+                const auto again = CsvUtils::importFile(path, db);
+                expect(again.validRows.isEmpty() && again.duplicateRows == 1 && again.errors.isEmpty(),
+                       "reimport reports only the existing purchase as duplicate");
+            }
+        }
+    }
+
+    Database db;
+    QString error;
+    expect(db.open(root + "/totals-boundaries.sqlite", &error), "open boundary database");
+    expect(db.setCurrency(AppCurrency::Currency::Euro, &error), "set boundary currency");
+    const QString path = root + "/totals-boundaries.csv";
+    // Reordered columns, quoted/trimmed label, real exchange named TOTALS,
+    // and malformed purchases that must continue to be reported as errors.
+    expect(writeUtf8(path, QStringLiteral(
+        "Exchange;EUR;Date;Sats;TXID\n"
+        ";10;\" totals \";100;\n"
+        "TOTALS;10;03/01/2009;100;real\n"
+        "Exchange;10;TOTALI;100;\n"
+        ";10;TOTALS;100;nonempty-tx\n"
+        ";10;not-a-date;100;\n")), "write totals boundary fixture");
+    const auto result = CsvUtils::importFile(path, db);
+    expect(result.validRows.size() == 1 && result.errors.size() == 3,
+           "skip only recognized summaries; preserve purchases and real errors");
+    expect(result.errors.join(" ").contains('6'), "preserve physical CSV error line numbers");
+}
+
 void testMonthlyStatistics() {
     QVector<Purchase> purchases;
 
@@ -291,6 +356,7 @@ int main(int argc, char *argv[]) {
         testDatabaseRulesAndBackup(temporaryDir.path());
         testLegacyDatabaseCompatibility(temporaryDir.path());
         testCsvValidation(temporaryDir.path());
+        testCsvExportTotals(temporaryDir.path());
         testMonthlyStatistics();
         testPurchaseSearch();
     }

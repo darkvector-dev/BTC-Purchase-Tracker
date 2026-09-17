@@ -374,6 +374,16 @@ CsvImportResult importFile(const QString &path, const Database &db) {
         const QStringList cells = parseLine(line, delimiter);
         auto get = [&](int i)->QString { return (i >= 0 && i < cells.size()) ? cells[i].trimmed() : QString(); };
 
+        // Our CSV export ends with a summary, not a purchase. Recognize both
+        // languages regardless of the current UI language or column order.
+        // Require the empty exchange/TX fields used by the exporter so that
+        // ordinary malformed purchases still appear in the error report.
+        const QString dateCell = get(iDate);
+        const bool totalsLabel = dateCell.compare(QStringLiteral("TOTALI"), Qt::CaseInsensitive) == 0
+            || dateCell.compare(QStringLiteral("TOTALS"), Qt::CaseInsensitive) == 0;
+        if (totalsLabel && get(iSite).isEmpty() && get(iTx).isEmpty())
+            continue;
+
         Purchase p;
         p.date = parseDate(get(iDate));
         p.site = get(iSite);

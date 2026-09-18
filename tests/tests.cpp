@@ -5,6 +5,7 @@
 
 #include <QCoreApplication>
 #include <QDate>
+#include <QDir>
 #include <QFile>
 #include <QSqlDatabase>
 #include <QSqlError>
@@ -21,6 +22,12 @@ void expect(bool condition, const QString &message) {
         return;
     ++failures;
     QTextStream(stderr) << "FAIL: " << message << '\n';
+}
+
+// Read the error only inside this function, after the operation has completed.
+// Formatting it in another argument can capture the previous error on MSVC.
+void expect(bool condition, const QString &message, const QString &error) {
+    expect(condition, message + QStringLiteral(": ") + error);
 }
 
 Purchase purchase(const QString &txid, qint64 cents = 1000, qint64 sats = 100) {
@@ -47,16 +54,16 @@ void testDatabaseRulesAndBackup(const QString &root) {
     const QString databasePath = root + QStringLiteral("/current.sqlite");
     Database db;
     QString error;
-    expect(db.open(databasePath, &error), QStringLiteral("open new database: %1").arg(error));
+    expect(db.open(databasePath, &error), QStringLiteral("open new database"), error);
     expect(db.setCurrency(AppCurrency::Currency::Euro, &error),
-           QStringLiteral("set database currency: %1").arg(error));
+           QStringLiteral("set database currency"), error);
 
     expect(db.addPurchase(purchase(QStringLiteral("AbC123")), &error),
-           QStringLiteral("insert valid purchase: %1").arg(error));
+           QStringLiteral("insert valid purchase"), error);
     expect(db.txidExists(QStringLiteral("AbC123")), QStringLiteral("find exact TXID"));
     expect(!db.txidExists(QStringLiteral("abc123")), QStringLiteral("TXID comparison is case-sensitive"));
     expect(db.addPurchase(purchase(QStringLiteral("abc123")), &error),
-           QStringLiteral("allow TXID differing only by case: %1").arg(error));
+           QStringLiteral("allow TXID differing only by case"), error);
 
     expect(!db.addPurchase(purchase(QStringLiteral("zero-amount"), 0, 100), &error),
            QStringLiteral("reject zero purchase amount"));
@@ -76,17 +83,33 @@ void testDatabaseRulesAndBackup(const QString &root) {
     expect(db.purchases().size() == 2, QStringLiteral("invalid transaction writes no rows"));
 
     const QString backupPath = root + QStringLiteral("/backup.sqlite");
-    expect(db.backupTo(backupPath, &error), QStringLiteral("create database backup: %1").arg(error));
+    expect(db.backupTo(backupPath, &error), QStringLiteral("create database backup"), error);
+    expect(error.isEmpty(), QStringLiteral("successful backup clears previous error"));
     expect(!db.backupTo(databasePath, &error), QStringLiteral("reject backup onto active database"));
 
     expect(db.addPurchase(purchase(QStringLiteral("after-first-backup")), &error),
-           QStringLiteral("insert before replacing backup: %1").arg(error));
-    expect(db.backupTo(backupPath, &error), QStringLiteral("replace existing backup safely: %1").arg(error));
+           QStringLiteral("insert before replacing backup"), error);
+    expect(db.backupTo(backupPath, &error), QStringLiteral("replace existing backup safely"), error);
 
     Database restored;
-    expect(restored.open(backupPath, &error), QStringLiteral("open generated backup: %1").arg(error));
+    expect(restored.open(backupPath, &error), QStringLiteral("open generated backup"), error);
     expect(restored.purchases(&error).size() == 3,
-           QStringLiteral("replacement backup contains the latest rows: %1").arg(error));
+           QStringLiteral("replacement backup contains the latest rows"), error);
+    expect(restored.hasStoredCurrency() && restored.currency() == AppCurrency::Currency::Euro,
+           QStringLiteral("backup preserves currency metadata"));
+    restored.close();
+
+    // A failed attempt must leave both the existing backup and the source intact.
+    db.close();
+    expect(!db.backupTo(backupPath, &error), QStringLiteral("reject backup from a closed database"));
+    expect(restored.open(backupPath, &error), QStringLiteral("reopen preserved backup"), error);
+    expect(restored.purchases().size() == 3, QStringLiteral("failed backup preserves existing rows"));
+    expect(db.open(databasePath, &error), QStringLiteral("reopen original database"), error);
+    expect(db.purchases().size() == 3, QStringLiteral("backup leaves original rows intact"));
+    const QStringList leftovers = QDir(root).entryList(
+        {QStringLiteral(".backup.sqlite.backup-*"), QStringLiteral(".backup.sqlite.previous-*")},
+        QDir::Files | QDir::Hidden);
+    expect(leftovers.isEmpty(), QStringLiteral("backup leaves no temporary files"));
 }
 
 void testLegacyDatabaseCompatibility(const QString &root) {
@@ -117,19 +140,19 @@ void testLegacyDatabaseCompatibility(const QString &root) {
 
     Database legacy;
     QString error;
-    expect(legacy.open(legacyPath, &error), QStringLiteral("open old database: %1").arg(error));
+    expect(legacy.open(legacyPath, &error), QStringLiteral("open old database"), error);
     expect(!legacy.hasStoredCurrency(), QStringLiteral("old database is detected as pre-currency"));
     expect(legacy.setCurrency(AppCurrency::Currency::Euro, &error),
-           QStringLiteral("mark old database as EUR: %1").arg(error));
+           QStringLiteral("mark old database as EUR"), error);
     expect(legacy.purchases(&error).size() == 1,
-           QStringLiteral("old database row remains readable: %1").arg(error));
+           QStringLiteral("old database row remains readable"), error);
 
     const QString backupPath = root + QStringLiteral("/legacy-backup.sqlite");
-    expect(legacy.backupTo(backupPath, &error), QStringLiteral("back up old database: %1").arg(error));
+    expect(legacy.backupTo(backupPath, &error), QStringLiteral("back up old database"), error);
     Database restored;
-    expect(restored.open(backupPath, &error), QStringLiteral("reopen old-database backup: %1").arg(error));
+    expect(restored.open(backupPath, &error), QStringLiteral("reopen old-database backup"), error);
     expect(restored.purchases(&error).size() == 1,
-           QStringLiteral("old-database backup preserves data: %1").arg(error));
+           QStringLiteral("old-database backup preserves data"), error);
 }
 
 void testCsvValidation(const QString &root) {

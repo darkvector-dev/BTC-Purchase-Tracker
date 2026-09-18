@@ -12,6 +12,7 @@ It is designed to work without accounts, cloud services or wallet connections: y
 ## Changes in 1.1.1
 
 - Fixed reimport of exported CSVs: the `TOTALI` / `TOTALS` summary is skipped without an error or double-counting, in Italian/English and EUR/USD.
+- Fixed database backup creation and replacement on Windows by releasing temporary file handles before removal.
 - Added a GitHub Actions build and DMG packaging for macOS Apple Silicon (M1 and later).
 - Made the search shortcut hint follow the platform (`Cmd+F` on macOS).
 - Aligned manual purchase entry/editing with CSV validation: dates must fall between Bitcoin’s genesis block on **3 January 2009** and **today**, inclusive.
@@ -218,8 +219,7 @@ No system-wide installation is required.
 ### macOS Apple Silicon (M1 and later)
 
 The macOS workflow builds a native **arm64** app for **macOS 12 Monterey or later**.
-The initial Mac package must be tested on a physical Mac before publishing it as
-verified. Intel Macs are not targeted.
+Intel Macs are not targeted.
 
 Download the `.dmg`, open it, and drag **BTC Purchase Tracker** into
 **Applications**. Eject the disk image and launch the app from Applications.

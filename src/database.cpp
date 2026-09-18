@@ -59,6 +59,7 @@ void Database::close() {
 }
 
 bool Database::backupTo(const QString &destinationPath, QString *error) const {
+    if (error) error->clear();
     if (!m_db.isOpen() || m_filePath.isEmpty()) {
         if (error) *error = QStringLiteral("The database is not open.");
         return false;
@@ -96,8 +97,9 @@ bool Database::backupTo(const QString &destinationPath, QString *error) const {
         return false;
     }
     const QString temporaryPath = temporaryBackup.fileName();
-    temporaryBackup.close();
-    if (!QFile::remove(temporaryPath)) {
+    // close() keeps QTemporaryFile's native handle open. Remove through the
+    // owning object so Qt releases that handle before deleting on Windows.
+    if (!temporaryBackup.remove()) {
         if (error) *error = QStringLiteral("Unable to prepare the temporary backup file.");
         return false;
     }
@@ -123,8 +125,8 @@ bool Database::backupTo(const QString &destinationPath, QString *error) const {
             return false;
         }
         previousPath = previousHolder.fileName();
-        previousHolder.close();
-        if (!QFile::remove(previousPath)) {
+        // As above, release the holder's native handle before reusing its path.
+        if (!previousHolder.remove()) {
             QFile::remove(temporaryPath);
             if (error) *error = QStringLiteral("Unable to preserve the existing backup.");
             return false;

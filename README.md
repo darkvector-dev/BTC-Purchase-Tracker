@@ -11,7 +11,7 @@ It is designed to work without accounts, cloud services or wallet connections: y
 
 ## Changes in 1.2.0
 
-- Added Settings → Theme → Light / Dark (Impostazioni → Tema → Chiaro / Scuro).
+- Added Settings → Theme → Light / Dark (Settings → Theme → Light / Dark).
 - Theme changes immediately and is remembered across launches; Light is the default.
 - Consistent Fusion controls and Bitcoin-orange accents, with adapted charts.
 - Native file dialogs follow the operating system appearance. PDF exports remain print-friendly.

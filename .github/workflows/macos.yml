@@ -50,17 +50,17 @@ jobs:
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BTC-Purchase-Tracker-1.1.1-macOS-arm64
+          name: BTC-Purchase-Tracker-1.2.0-macOS-arm64
           path: |
-            dist/BTC-Purchase-Tracker-1.1.1-macOS-arm64.dmg
-            dist/BTC-Purchase-Tracker-1.1.1-macOS-arm64.dmg.sha256
+            dist/BTC-Purchase-Tracker-1.2.0-macOS-arm64.dmg
+            dist/BTC-Purchase-Tracker-1.2.0-macOS-arm64.dmg.sha256
           if-no-files-found: error
           retention-days: 30
 
       - name: Upload macOS dependency sources
         uses: actions/upload-artifact@v4
         with:
-          name: BTC-Purchase-Tracker-1.1.1-macOS-dependency-sources
+          name: BTC-Purchase-Tracker-1.2.0-macOS-dependency-sources
           path: |
             dist/qtbase-everywhere-src-*.tar.xz
             dist/qtsvg-everywhere-src-*.tar.xz

@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "diagnosticlog.h"
 #include "language.h"
+#include "theme.h"
 
 #include <QApplication>
 #include <QIcon>
@@ -10,8 +11,9 @@ int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     QApplication::setOrganizationName("BTCPurchaseTracker");
     QApplication::setApplicationName("BTCPurchaseTracker");
-    QApplication::setApplicationVersion("1.1.1");
+    QApplication::setApplicationVersion("1.2.0");
 
+    AppTheme::initialize();
     AppLanguage::load();
     DiagnosticLog::initialize();
     DiagnosticLog::info(AppLanguage::isEnglish()

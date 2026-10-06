@@ -3,7 +3,7 @@
 set -euo pipefail
 
 build_dir="${1:-build-macos}"
-version="1.1.1"
+version="1.2.0"
 app_name="BTC Purchase Tracker.app"
 package_dir="dist/macos-package"
 app="$package_dir/$app_name"

@@ -4,10 +4,17 @@
 
 It is designed to work without accounts, cloud services or wallet connections: your purchase history is stored in a local SQLite database under your control.
 
-**Version:** 1.1.1<br>
+**Version:** 1.2.0<br>
 **Platforms:** Windows x64 · Linux x86_64 · macOS Apple Silicon (M1 and later)<br>
 **Interface languages:** Italian · English  
 **Currencies:** EUR · USD
+
+## Changes in 1.2.0
+
+- Added Settings → Theme → Light / Dark (Impostazioni → Tema → Chiaro / Scuro).
+- Theme changes immediately and is remembered across launches; Light is the default.
+- Consistent Fusion controls and Bitcoin-orange accents, with adapted charts.
+- Native file dialogs follow the operating system appearance. PDF exports remain print-friendly.
 
 ## Changes in 1.1.1
 
@@ -245,14 +252,14 @@ sha256sum -c checksums.txt --ignore-missing
 On Windows, calculate the hash of the downloaded ZIP in PowerShell using the corresponding command, then compare it with the value in `checksums.txt`:
 
 ```powershell
-Get-FileHash .\BTC-Purchase-Tracker-1.1.1-Windows-x64.zip -Algorithm SHA256
-Get-FileHash .\BTC-Purchase-Tracker-1.1.1-x86_64.zip -Algorithm SHA256
+Get-FileHash .\BTC-Purchase-Tracker-1.2.0-Windows-x64.zip -Algorithm SHA256
+Get-FileHash .\BTC-Purchase-Tracker-1.2.0-x86_64.zip -Algorithm SHA256
 ```
 
 On macOS, put the DMG and its matching `.dmg.sha256` file in the same folder:
 
 ```bash
-shasum -a 256 -c BTC-Purchase-Tracker-1.1.1-macOS-arm64.dmg.sha256
+shasum -a 256 -c BTC-Purchase-Tracker-1.2.0-macOS-arm64.dmg.sha256
 ```
 
 A matching checksum checks file integrity against that checksum; it is not a publisher signature.
@@ -299,7 +306,7 @@ The repository includes a GitHub Actions workflow for generating a portable Wind
 Run **Actions → Build macOS Apple Silicon → Run workflow** on GitHub.
 The workflow is `.github/workflows/macos.yml`; it also runs on `v*` tags.
 It uses the native Apple Silicon `macos-15` runner, Qt 6.8.3, and runs the tests
-before packaging. Download the `BTC-Purchase-Tracker-1.1.1-macOS-arm64`
+before packaging. Download the `BTC-Purchase-Tracker-1.2.0-macOS-arm64`
 artifact and extract the DMG and its checksum from the artifact ZIP.
 The dependency-source artifact is for maintainers.
 

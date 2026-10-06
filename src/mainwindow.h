@@ -93,6 +93,9 @@ private:
     QMenu *m_databaseMenu{};
     QMenu *m_settingsMenu{};
     QMenu *m_languageMenu{};
+    QMenu *m_themeMenu{};
+    QAction *m_lightThemeAction{};
+    QAction *m_darkThemeAction{};
     QMenu *m_infoMenu{};
 
     QAction *m_showPathAction{};

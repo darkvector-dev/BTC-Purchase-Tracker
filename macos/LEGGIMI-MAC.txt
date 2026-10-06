@@ -1,4 +1,4 @@
-BTC Purchase Tracker 1.1.1 — Mac Apple Silicon
+BTC Purchase Tracker 1.2.0 — Mac Apple Silicon
 
 Requisiti: Mac con M1 o successivo, macOS 12 Monterey o successivo.
 Questa versione non è destinata ai Mac Intel.

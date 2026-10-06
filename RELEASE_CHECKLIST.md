@@ -1,4 +1,4 @@
-# Release 1.1.1
+# Release 1.2.0
 
 - Run all three workflows from the same reviewed commit or tag. Their test steps must pass.
 - Confirm that the v1.0.0 database opens without migration or data changes.
@@ -14,12 +14,12 @@
   an error or become a purchase. Nonempty TXIDs must still be deduplicated.
 - Confirm all SHA-256 files against their corresponding download.
 - Create a draft GitHub Release and attach only these normal user downloads:
-  - `BTC-Purchase-Tracker-1.1.1-Windows-x64.zip`
-  - `BTC-Purchase-Tracker-1.1.1-Windows-x64.zip.sha256`
-  - `BTC-Purchase-Tracker-1.1.1-x86_64.AppImage`
-  - `BTC-Purchase-Tracker-1.1.1-x86_64.AppImage.sha256`
-  - `BTC-Purchase-Tracker-1.1.1-macOS-arm64.dmg`
-  - `BTC-Purchase-Tracker-1.1.1-macOS-arm64.dmg.sha256`
+  - `BTC-Purchase-Tracker-1.2.0-Windows-x64.zip`
+  - `BTC-Purchase-Tracker-1.2.0-Windows-x64.zip.sha256`
+  - `BTC-Purchase-Tracker-1.2.0-x86_64.AppImage`
+  - `BTC-Purchase-Tracker-1.2.0-x86_64.AppImage.sha256`
+  - `BTC-Purchase-Tracker-1.2.0-macOS-arm64.dmg`
+  - `BTC-Purchase-Tracker-1.2.0-macOS-arm64.dmg.sha256`
 - Preserve the Windows and macOS Qt Base and Qt SVG source archives emitted by Actions;
   publish them separately with the release or provide their exact source links.
 - Confirm that the Windows `BUILD-INFO.txt` lists Qt Base and Qt SVG and that the

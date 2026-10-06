@@ -3,6 +3,7 @@
 #include "diagnosticlog.h"
 #include "currency.h"
 #include "language.h"
+#include "theme.h"
 #include "monthlystats.h"
 #include "purchasedialog.h"
 #include "searchfilter.h"
@@ -163,7 +164,7 @@ protected:
             const double price = minPrice + ratio * (maxPrice - minPrice);
 
             QColor grid = gridColor;
-            grid.setAlpha(90);
+            grid.setAlpha(AppTheme::isDark() ? 125 : 90);
             painter.setPen(QPen(grid, 1));
             painter.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y));
 
@@ -297,7 +298,7 @@ protected:
                 }
             }
 
-            QColor hoverColor = Qt::red;
+            QColor hoverColor = AppTheme::isDark() ? QColor("#ff7272") : QColor("#bf2525");
             hoverColor.setAlpha(210);
 
             painter.setPen(QPen(hoverColor, 1.2));
@@ -507,7 +508,7 @@ protected:
             const double ratio = static_cast<double>(i) / 4.0;
             const double y = plot.bottom() - ratio * plot.height();
             QColor grid = gridColor;
-            grid.setAlpha(90);
+            grid.setAlpha(AppTheme::isDark() ? 125 : 90);
             painter.setPen(QPen(grid, 1));
             painter.drawLine(QPointF(plot.left(), y), QPointF(plot.right(), y));
 
@@ -1077,6 +1078,18 @@ void MainWindow::buildUi() {
     m_italianAction->setCheckable(true);
     m_englishAction->setCheckable(true);
 
+    m_themeMenu = m_settingsMenu->addMenu(QString());
+    m_lightThemeAction = m_themeMenu->addAction(QString());
+    m_darkThemeAction = m_themeMenu->addAction(QString());
+    auto *themeGroup = new QActionGroup(this);
+    themeGroup->setExclusive(true);
+    for (auto *action : {m_lightThemeAction, m_darkThemeAction}) {
+        action->setCheckable(true);
+        themeGroup->addAction(action);
+    }
+    connect(m_lightThemeAction, &QAction::triggered, this, [] { AppTheme::setDark(false); });
+    connect(m_darkThemeAction, &QAction::triggered, this, [] { AppTheme::setDark(true); });
+
     m_settingsMenu->addSeparator();
     m_resetAction = m_settingsMenu->addAction(QString(), this, &MainWindow::resetApplication);
 
@@ -1238,6 +1251,11 @@ void MainWindow::applyLanguage() {
     m_changeFolderAction->setText(L("Cambia cartella…", "Change folder…"));
 
     m_settingsMenu->setTitle(L("Impostazioni", "Settings"));
+    m_themeMenu->setTitle(L("Tema", "Theme"));
+    m_lightThemeAction->setText(L("Chiaro", "Light"));
+    m_darkThemeAction->setText(L("Scuro", "Dark"));
+    m_lightThemeAction->setChecked(!AppTheme::isDark());
+    m_darkThemeAction->setChecked(AppTheme::isDark());
     m_languageMenu->setTitle(L("Lingua", "Language"));
     m_italianAction->setText("Italiano");
     m_englishAction->setText("English");
@@ -1564,7 +1582,7 @@ void MainWindow::showAbout() {
     title->setFont(titleFont);
     title->setAlignment(Qt::AlignCenter);
 
-    auto *version = new QLabel(L("Versione 1.1.1", "Version 1.1.1"), &dialog);
+    auto *version = new QLabel(L("Versione 1.2.0", "Version 1.2.0"), &dialog);
     version->setAlignment(Qt::AlignCenter);
 
     auto *description = new QLabel(

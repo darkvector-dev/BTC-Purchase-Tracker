@@ -68,6 +68,10 @@ namespace {
 QString L(const char *italian, const char *english) {
     return AppLanguage::text(italian, english);
 }
+
+QString formatPurchasePrice(double price, AppCurrency::Currency currency) {
+    return AppCurrency::formatMajor(price, currency, 2);
+}
 }
 
 struct PurchaseChartPoint {
@@ -325,7 +329,7 @@ protected:
                     + "   "
                     + AppCurrency::formatMoney(m_points[index].amountCents, m_currency)
                     + "   "
-                    + AppCurrency::formatMajor(m_points[index].price, m_currency, 2)
+                    + formatPurchasePrice(m_points[index].price, m_currency)
                     + "/BTC"
                 );
             } else {
@@ -335,7 +339,7 @@ protected:
                     infoLines.append(
                         AppCurrency::formatMoney(m_points[index].amountCents, m_currency)
                         + "  —  "
-                        + AppCurrency::formatMajor(m_points[index].price, m_currency, 2)
+                        + formatPurchasePrice(m_points[index].price, m_currency)
                         + "/BTC"
                     );
                 }
@@ -587,7 +591,7 @@ constexpr auto kOrg = "BTCPurchaseTracker";
 constexpr auto kApp = "BTCPurchaseTracker";
 constexpr auto kDbKey = "databaseFolder";
 constexpr auto kWindowGeometryKey = "ui/windowGeometry";
-constexpr auto kTableHeaderStateKey = "ui/tableHeaderState";
+constexpr auto kTableHeaderStateKey = "ui/tableHeaderStateV2";
 constexpr auto kDbName = "btc-purchase-tracker.sqlite";
 constexpr auto kAutoCsvName = "btc_purchase_tracker_autobackup.csv";
 
@@ -690,9 +694,10 @@ protected:
     }
 };
 
+template <typename Number>
 class SortableNumberItem : public QTableWidgetItem {
 public:
-    SortableNumberItem(const QString &text, qint64 sortValue)
+    SortableNumberItem(const QString &text, Number sortValue)
         : QTableWidgetItem(text), m_sortValue(sortValue) {}
 
     bool operator<(const QTableWidgetItem &other) const override {
@@ -702,7 +707,7 @@ public:
     }
 
 private:
-    qint64 m_sortValue;
+    Number m_sortValue;
 };
 }
 
@@ -1028,7 +1033,7 @@ void MainWindow::buildUi() {
     outer->addWidget(chartBox);
 
     m_table = new QTableWidget(this);
-    m_table->setColumnCount(6);
+    m_table->setColumnCount(7);
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_table->setSelectionMode(QAbstractItemView::SingleSelection);
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -1045,7 +1050,8 @@ void MainWindow::buildUi() {
     m_table->setColumnWidth(2, 120);
     m_table->setColumnWidth(3, 150);
     m_table->setColumnWidth(4, 140);
-    m_table->setColumnWidth(5, 300);
+    m_table->setColumnWidth(5, 135);
+    m_table->setColumnWidth(6, 300);
 
     outer->addWidget(m_table, 1);
 
@@ -1236,8 +1242,13 @@ void MainWindow::applyLanguage() {
         AppCurrency::code(m_db.currency()),
         "BTC on-chain",
         "Satoshi",
+        L("Prezzo/BTC", "Price/BTC"),
         L("TX / ID transazione", "TX / Transaction ID")
     });
+    m_table->horizontalHeaderItem(5)->setToolTip(L(
+        "Prezzo effettivo per 1 BTC: importo registrato diviso per i BTC registrati.",
+        "Effective price per 1 BTC: recorded amount divided by recorded BTC."
+    ));
 
     m_editButton->setText(L("Modifica", "Edit"));
     m_deleteButton->setText(L("Elimina", "Delete"));
@@ -1711,6 +1722,10 @@ void MainWindow::refresh() {
     m_table->setSortingEnabled(false);
     m_table->setRowCount(rows.size());
 
+    const auto currency = m_db.currency();
+    QVector<PurchaseChartPoint> chartPoints;
+    chartPoints.reserve(rows.size());
+
     for (int r = 0; r < rows.size(); ++r) {
         const auto &p = rows[r];
 
@@ -1721,7 +1736,7 @@ void MainWindow::refresh() {
             m_table->setItem(r, c, item);
         };
 
-        auto setSortable = [&](int c, const QString &text, qint64 sortValue) {
+        auto setSortable = [&](int c, const QString &text, auto sortValue) {
             auto *item = new SortableNumberItem(text, sortValue);
             item->setTextAlignment(Qt::AlignCenter);
             item->setData(Qt::UserRole, p.id);
@@ -1733,7 +1748,18 @@ void MainWindow::refresh() {
         setSortable(2, CsvUtils::formatMoney(p.euroCents, m_db.currency()), p.euroCents);
         setSortable(3, CsvUtils::satsToBtc(p.sats), p.sats);
         setSortable(4, CsvUtils::formatSats(p.sats), p.sats);
-        set(5, p.txid);
+        if (p.euroCents > 0 && p.sats > 0) {
+            // Calcola il valore una volta sola per la tabella e per il grafico.
+            const double price = static_cast<double>(
+                static_cast<long double>(p.euroCents) * 1000000.0L /
+                static_cast<long double>(p.sats)
+            );
+            setSortable(5, formatPurchasePrice(price, currency), price);
+            chartPoints.append({p.date, price, p.euroCents});
+        } else {
+            setSortable(5, QStringLiteral("—"), 0.0);
+        }
+        set(6, p.txid);
 
     }
 
@@ -1783,24 +1809,6 @@ void MainWindow::refresh() {
     } else {
         m_averagePrice->setText("—");
         m_averagePrice->setProperty("clipboardValue", QString());
-    }
-
-    QVector<PurchaseChartPoint> chartPoints;
-    chartPoints.reserve(rows.size());
-
-    for (const auto &p : rows) {
-        if (p.sats <= 0 || p.euroCents <= 0)
-            continue;
-
-        const long double purchasePrice =
-            static_cast<long double>(p.euroCents) * 1000000.0L /
-            static_cast<long double>(p.sats);
-
-        chartPoints.append({
-            p.date,
-            static_cast<double>(purchasePrice),
-            p.euroCents
-        });
     }
 
     if (m_priceChart)

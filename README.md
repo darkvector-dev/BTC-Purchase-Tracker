@@ -4,10 +4,25 @@
 
 It is designed to work without accounts, cloud services or wallet connections: your purchase history is stored in a local SQLite database under your control.
 
-**Version:** 1.2.0<br>
+**Version:** 1.3.0<br>
 **Platforms:** Windows x64 · Linux x86_64 · macOS Apple Silicon (M1 and later)<br>
 **Interface languages:** Italian · English  
 **Currencies:** EUR · USD
+
+## Changes in 1.3.0 / Novità della 1.3.0
+
+**English.** The purchase table now includes a sortable **Price/BTC** column
+between **Satoshi** and **TX / Transaction ID**. It shows the effective price per
+BTC for each purchase, calculated by dividing the recorded amount spent by the
+recorded BTC. The table and chart tooltip show the same price to two decimal
+places in the database currency. Existing SQLite databases and CSV files remain compatible.
+
+**Italiano.** La tabella degli acquisti ora include la colonna ordinabile
+**Prezzo/BTC** tra **Satoshi** e **TX / ID transazione**. Mostra il prezzo
+effettivo per 1 BTC di ogni acquisto, calcolato dividendo l’importo speso
+registrato per i BTC registrati. La tabella e il riquadro del grafico mostrano
+lo stesso prezzo con due decimali nella valuta del database. I database SQLite
+e i file CSV esistenti restano compatibili.
 
 ## Changes in 1.2.0
 
@@ -34,6 +49,7 @@ It is designed to work without accounts, cloud services or wallet connections: y
 - Calculate the average monthly DCA spending for the selected period
 - Filter purchases and totals by year
 - View the purchase-price trend on a chronological chart
+- Compare the effective price per BTC for each purchase in the sortable **Price/BTC** column
 - Hover over the chart to see purchase dates, amounts spent and prices per BTC
 - Inspect all purchases on the same date and their daily spending total
 - View monthly spending on a vertical bar chart
@@ -252,14 +268,14 @@ sha256sum -c checksums.txt --ignore-missing
 On Windows, calculate the hash of the downloaded ZIP in PowerShell using the corresponding command, then compare it with the value in `checksums.txt`:
 
 ```powershell
-Get-FileHash .\BTC-Purchase-Tracker-1.2.0-Windows-x64.zip -Algorithm SHA256
-Get-FileHash .\BTC-Purchase-Tracker-1.2.0-x86_64.zip -Algorithm SHA256
+Get-FileHash .\BTC-Purchase-Tracker-1.3.0-Windows-x64.zip -Algorithm SHA256
+Get-FileHash .\BTC-Purchase-Tracker-1.3.0-x86_64.zip -Algorithm SHA256
 ```
 
 On macOS, put the DMG and its matching `.dmg.sha256` file in the same folder:
 
 ```bash
-shasum -a 256 -c BTC-Purchase-Tracker-1.2.0-macOS-arm64.dmg.sha256
+shasum -a 256 -c BTC-Purchase-Tracker-1.3.0-macOS-arm64.dmg.sha256
 ```
 
 A matching checksum checks file integrity against that checksum; it is not a publisher signature.
@@ -306,7 +322,7 @@ The repository includes a GitHub Actions workflow for generating a portable Wind
 Run **Actions → Build macOS Apple Silicon → Run workflow** on GitHub.
 The workflow is `.github/workflows/macos.yml`; it also runs on `v*` tags.
 It uses the native Apple Silicon `macos-15` runner, Qt 6.8.3, and runs the tests
-before packaging. Download the `BTC-Purchase-Tracker-1.2.0-macOS-arm64`
+before packaging. Download the `BTC-Purchase-Tracker-1.3.0-macOS-arm64`
 artifact and extract the DMG and its checksum from the artifact ZIP.
 The dependency-source artifact is for maintainers.
 

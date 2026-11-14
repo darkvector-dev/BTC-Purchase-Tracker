@@ -29,8 +29,8 @@ if [ ! -f "$QT" ]; then
 fi
 chmod +x "$LD" "$QT"
 
-export VERSION="1.2.0"
-export OUTPUT="$HERE/BTC-Purchase-Tracker-1.2.0-x86_64.AppImage"
+export VERSION="1.3.0"
+export OUTPUT="$HERE/BTC-Purchase-Tracker-1.3.0-x86_64.AppImage"
 
 # --appimage-extract-and-run evita di dipendere da FUSE sul sistema di build.
 "$LD" --appimage-extract-and-run \

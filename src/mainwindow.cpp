@@ -1593,7 +1593,7 @@ void MainWindow::showAbout() {
     title->setFont(titleFont);
     title->setAlignment(Qt::AlignCenter);
 
-    auto *version = new QLabel(L("Versione 1.2.0", "Version 1.2.0"), &dialog);
+    auto *version = new QLabel(L("Versione 1.3.0", "Version 1.3.0"), &dialog);
     version->setAlignment(Qt::AlignCenter);
 
     auto *description = new QLabel(

@@ -11,7 +11,7 @@ int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     QApplication::setOrganizationName("BTCPurchaseTracker");
     QApplication::setApplicationName("BTCPurchaseTracker");
-    QApplication::setApplicationVersion("1.2.0");
+    QApplication::setApplicationVersion("1.3.0");
 
     AppTheme::initialize();
     AppLanguage::load();
